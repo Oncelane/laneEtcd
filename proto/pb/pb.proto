@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package lane.pb;
+option go_package = "laneETCD/proto/pb;pb";
+
+message RequestVoteArgs {
+  int64 Term = 1;
+  int64 CandidateId = 2;
+  int64 LastLogIndex = 3;
+  int64 LastLogTerm = 4;
+}
+
+message RequestVoteReply {
+  int64 Term = 1;
+  bool VoteGranted = 2;
+}
+
+message AppendEntriesArgs {
+  int64 Term = 1;
+  int64 LeaderId = 2;
+  int64 PrevLogIndex = 3;
+  int64 PrevLogTerm = 4;
+  int64 LeaderCommit = 5;
+  repeated LogType Entries = 6;
+}
+
+message LogType {
+  int64 Term = 1;
+  bytes Value = 2;
+}
+
+message AppendEntriesReply {
+  int64 Term = 1;
+  bool Success = 2;
+  int64 ConflictIndex = 3;
+  int64 ConflictTerm = 4;
+}
+
+message SnapshotInstallArgs {
+  int64 Term = 1;
+  int64 LeaderId = 2;
+  int64 LastIncludeIndex = 3;
+  int64 LastIncludeTerm = 4;
+  bytes Data = 5;
+}
+
+message SnapshotInstallReply { int64 Term = 1; }
