@@ -9,7 +9,6 @@ import (
 	"laneEtcd/src/pkg/laneConfig"
 	"laneEtcd/src/pkg/laneLog"
 	"laneEtcd/src/raft"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -50,11 +49,8 @@ type duplicateType struct {
 	Reply  string
 }
 
-// Get(context.Context, *GetArgs) (*GetReply, error)
-//
-
 func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply, err error) {
-	// Your code here.
+	reply = new(pb.GetReply)
 	reply.Value = "i should not with ok symble"
 	reply.Err = ErrWrongLeader
 	reply.LeaderId = int32(kv.rf.GetleaderId())
@@ -76,7 +72,7 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 			OpType: emptyT,
 		})
 		if err != nil {
-			panic(err)
+			laneLog.Logger.Fatalln(err)
 		}
 		kv.rf.Start(data)
 		return reply, nil
@@ -117,10 +113,13 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 
 func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply *pb.PutAppendReply, err error) {
 
+	reply = new(pb.PutAppendReply)
 	// Your code here.
 	reply.LeaderId = int32(kv.rf.GetleaderId())
 	reply.Err = ErrWrongLeader
 	reply.ServerId = int32(kv.me)
+	// laneLog.Logger.Infof("server [%d] [PutAppend] 📨receive a args[%v]", kv.me, args.String())
+	// defer laneLog.Logger.Infof("server [%d] [PutAppend] 📨complete a args[%v]", kv.me, args.String())
 	if _, ok := kv.rf.GetState(); ok {
 		// laneLog.Logger.Infof("server [%d] [info] i am leader", kv.me)
 	} else {
@@ -141,11 +140,9 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 	case "Append":
 		op.OpType = appendT
 	default:
-		log.Fatalf("unreconize put append args.Op:%s", args.Op)
+		laneLog.Logger.Fatalf("unreconize put append args.Op:%s", args.Op)
 	}
 
-	// laneLog.Logger.Infof("server [%d] [PutAppend] 📨receive a args[%v]", kv.me, *args)
-	// defer laneLog.Logger.Infof("server [%d] [PutAppend] 📨complete a args[%v]", kv.me, *args)
 	//start前需要查看本地log缓存是否有seq
 
 	//这里通过缓存提交，一方面提高了kvserver应对网络错误的回复速度，另一方面进行了第一层的重复检测
@@ -195,7 +192,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 				return
 			}
 
-			// laneLog.Logger.Infof("server [%d] [PutAppend] appliedIndex available :PutAppend index[%d] lastAppliedIndex[%d]", kv.me, index, kv.lastAppliedIndex)
+			laneLog.Logger.Infof("server [%d] [PutAppend] appliedIndex available :PutAppend index[%d] lastAppliedIndex[%d]", kv.me, index, kv.lastAppliedIndex)
 			if term != kv.rf.GetTerm() {
 				//term不匹配了，说明本次提交失效
 				kv.mu.Unlock()
@@ -203,7 +200,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 			} //term匹配，说明本次提交一定是有效的
 
 			reply.Err = OK
-			// laneLog.Logger.Infof("server [%d] [PutAppend] success args.index[%d], args[%v] reply[%v]", kv.me, index, *args, *reply)
+			laneLog.Logger.Infof("server [%d] [PutAppend] success args.index[%d], args[%v] reply[%v]", kv.me, index, *args, *reply)
 			kv.mu.Unlock()
 			if _, isleader := kv.rf.GetState(); !isleader {
 				reply.Err = ErrWrongLeader
@@ -238,7 +235,7 @@ func (kv *KVServer) HandleApplych() {
 				laneLog.Logger.Infof("📷 server [%d] receive raftSnapshotIndex[%d]", kv.me, raft_type.SnapshotIndex)
 				kv.HandleApplychSnapshot(raft_type)
 			} else {
-				log.Fatalf("Unrecordnized applyArgs type")
+				laneLog.Logger.Fatalf("Unrecordnized applyArgs type")
 			}
 			kv.mu.Unlock()
 		}
@@ -247,9 +244,10 @@ func (kv *KVServer) HandleApplych() {
 }
 
 func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
-	op_type, ok := raft_type.Command.(Op)
-	if !ok {
-		log.Fatalf("raft applyArgs.command -> Op 失败,raft_type.Command = %v", raft_type.Command)
+	op_type := new(Op)
+	err := json.Unmarshal(raft_type.Command, op_type)
+	if err != nil {
+		laneLog.Logger.Fatalf("raft applyArgs.command -> Op 失败,raft_type.Command = %v", raft_type.Command)
 	}
 
 	if op_type.OpType == emptyT {
@@ -284,9 +282,9 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		kv.kvMap[op_type.Key] += op_type.Value
 		laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
 	case getT:
-		log.Fatalf("日志中不应该出现getType")
+		laneLog.Logger.Fatalf("日志中不应该出现getType")
 	default:
-		log.Fatalf("日志中出现未知optype = [%d]", op_type.OpType)
+		laneLog.Logger.Fatalf("日志中出现未知optype = [%d]", op_type.OpType)
 	}
 
 }
@@ -318,10 +316,10 @@ func (kv *KVServer) checkifNeedSnapshot(spanshotindex int) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(kv.duplicateMap); err != nil {
-		log.Fatalf("snapshot duplicateMap encoder fail:%s", err)
+		laneLog.Logger.Fatalf("snapshot duplicateMap encoder fail:%s", err)
 	}
 	if err := enc.Encode(kv.kvMap); err != nil {
-		log.Fatalf("snapshot kvMap encoder fail:%s", err)
+		laneLog.Logger.Fatalf("snapshot kvMap encoder fail:%s", err)
 	}
 
 	//将状态机传了进去
@@ -342,10 +340,10 @@ func (kv *KVServer) readPersist(data []byte) {
 	kvMap := make(map[string]string)
 	duplicateMap := make(map[int64]duplicateType)
 	if err := d.Decode(&duplicateMap); err != nil {
-		log.Fatalf("decode err:%s", err)
+		laneLog.Logger.Fatalf("decode err:%s", err)
 	}
 	if err := d.Decode(&kvMap); err != nil {
-		log.Fatalf("decode err:%s", err)
+		laneLog.Logger.Fatalf("decode err:%s", err)
 	}
 	kv.kvMap = kvMap
 	kv.duplicateMap = duplicateMap
@@ -424,7 +422,7 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 			laneLog.Logger.Fatalln("failed to serve : ", err.Error())
 		}
 	}()
-	laneLog.Logger.Infoln("etcd serivce is running on port")
+	laneLog.Logger.Infoln("etcd serivce is running on addr:", conf.Addr+conf.Port)
 	kv.grpc = gServer
 
 	laneLog.Logger.Infof("server [%d] restart", kv.me)

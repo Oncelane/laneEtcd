@@ -5,19 +5,22 @@ import (
 	"crypto/rand"
 	"laneEtcd/proto/pb"
 	"laneEtcd/src/pkg/laneConfig"
-	"log"
+	"laneEtcd/src/pkg/laneLog"
 	"math/big"
+	"sync"
 	"time"
 )
 
 type Clerk struct {
-	servers []*KVEnd
+	servers []*KVClient
 	// You will have to modify this struct.
 	nextSendLocalId int
 	LatestOffset    int32
 	clientId        int64
 	cTos            []int
 	sToc            []int
+	conf            laneConfig.Clerk
+	mu              sync.Mutex
 }
 
 func nrand() int64 {
@@ -27,29 +30,44 @@ func nrand() int64 {
 	return x
 }
 
-func NewClerk(conf laneConfig.Clerk) *Clerk {
-	// servers := make([]*KVEnd, len(conf.EtcdAddrs))
-	return nil
-}
-
 func (c *Clerk) watchEtcd() {
 
+	for {
+		for i, kvclient := range c.servers {
+			if !kvclient.Valid {
+				if kvclient.Realconn != nil {
+					kvclient.Realconn.Close()
+				}
+				k := NewKvClient(c.conf.EtcdAddrs[i])
+				if k != nil {
+					c.servers[i] = k
+					laneLog.Logger.Warnf("update etcd server[%d] addr[%s]", i, c.conf.EtcdAddrs[i])
+				}
+			}
+		}
+		time.Sleep(time.Millisecond * 500)
+	}
 }
 
-func MakeClerk(servers []*KVEnd) *Clerk {
+func MakeClerk(conf laneConfig.Clerk) *Clerk {
 	ck := new(Clerk)
-	ck.servers = servers
-	// You'll have to add code here.
-	ck.nextSendLocalId = int(nrand() % int64(len(servers)))
+	ck.conf = conf
+	// You'll have to add code here
+	ck.servers = make([]*KVClient, len(conf.EtcdAddrs))
+	for i := range ck.servers {
+		ck.servers[i] = new(KVClient)
+		ck.servers[i].Valid = false
+	}
+	ck.nextSendLocalId = int(nrand() % int64(len(conf.EtcdAddrs)))
 	ck.LatestOffset = 1
 	ck.clientId = nrand()
-	ck.cTos = make([]int, len(servers))
-	ck.sToc = make([]int, len(servers))
+	ck.cTos = make([]int, len(conf.EtcdAddrs))
+	ck.sToc = make([]int, len(conf.EtcdAddrs))
 	for i := range ck.cTos {
 		ck.cTos[i] = -1
 		ck.sToc[i] = -1
 	}
-
+	go ck.watchEtcd()
 	return ck
 }
 
@@ -63,9 +81,11 @@ func MakeClerk(servers []*KVEnd) *Clerk {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
+
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
-
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
 	args := pb.GetArgs{
 		Key:          key,
 		ClientId:     ck.clientId,
@@ -79,14 +99,26 @@ func (ck *Clerk) Get(key string) string {
 
 		if ck.nextSendLocalId == lastSendLocalId {
 			count++
-			if count > 5 {
+			if count > 3 {
 				count = 0
 				ck.changeNextSendId()
 			}
 		}
 
-		reply := &pb.GetReply{}
 		// laneLog.Logger.Infof("clinet [%d] [Get]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args)
+		var validCount = 0
+		for !ck.servers[ck.nextSendLocalId].Valid {
+			ck.changeNextSendId()
+			validCount++
+			if validCount == len(ck.servers) {
+				break
+			}
+		}
+		if validCount == len(ck.servers) {
+			laneLog.Logger.Infoln("not exist valid etcd server")
+			time.Sleep(time.Second)
+			continue
+		}
 		reply, err := ck.servers[ck.nextSendLocalId].conn.Get(context.Background(), &args)
 
 		//根据reply初始化一下本地server表
@@ -128,7 +160,7 @@ func (ck *Clerk) Get(key string) string {
 			// laneLog.Logger.Infof("client [%d] [Get]:[Wait for leader recover]", ck.clientId)
 			time.Sleep(time.Millisecond * 200)
 		default:
-			log.Fatalf("Client [%d] Get reply unknown err [%s](probaly not init)", ck.clientId, reply.Err)
+			laneLog.Logger.Fatalf("Client [%d] Get reply unknown err [%s](probaly not init)", ck.clientId, reply.Err)
 		}
 
 	}
@@ -144,6 +176,8 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
 	args := pb.PutAppendArgs{
 		Key:          key,
 		Value:        value,
@@ -163,10 +197,23 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			}
 		}
 
-		// laneLog.Logger.Infof("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args)
-		reply := &pb.PutAppendReply{}
-		reply, err := ck.servers[ck.nextSendLocalId].conn.PutAppend(context.Background(), &args)
+		var validCount = 0
+		for !ck.servers[ck.nextSendLocalId].Valid {
+			ck.changeNextSendId()
+			validCount++
+			if validCount == len(ck.servers) {
+				break
+			}
+		}
+		if validCount == len(ck.servers) {
+			laneLog.Logger.Infoln("not exist valid etcd server")
+			time.Sleep(time.Second)
+			continue
+		}
 
+		laneLog.Logger.Infof("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args.String())
+		reply, err := ck.servers[ck.nextSendLocalId].conn.PutAppend(context.Background(), &args)
+		laneLog.Logger.Debugln("receive etcd:", reply.String(), err)
 		//根据reply初始化一下本地server表
 
 		lastSendLocalId = ck.nextSendLocalId
@@ -185,7 +232,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[OK] args[%v] reply[%v]", ck.clientId, args, reply)
 			return
 		case ErrNoKey:
-			// log.Fatalf("Client [%d] [PutAppend]:reply ErrNokey, but should not happend to putAndAppend args", ck.clientId)
+			// laneLog.Logger.Fatalf("Client [%d] [PutAppend]:reply ErrNokey, but should not happend to putAndAppend args", ck.clientId)
 		case ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
@@ -202,7 +249,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 			}
 		default:
-			log.Fatalf("Client [%d] [PutAppend]:reply unknown err [%s](probaly not init)", ck.clientId, reply.Err)
+			laneLog.Logger.Fatalf("Client [%d] [PutAppend]:reply unknown err [%s](probaly not init)", ck.clientId, reply.Err)
 		}
 
 	}

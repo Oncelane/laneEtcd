@@ -59,7 +59,7 @@ const APPENDENTRIES_INTERVAL = 20 //对于任何重传AE，间隔20ms重传一�
 // other uses.
 type ApplyMsg struct {
 	CommandValid bool
-	Command      interface{}
+	Command      []byte
 	CommandIndex int
 
 	// For 3D:
@@ -807,7 +807,7 @@ func (rf *Raft) electionLoop() {
 							VoteResultChan <- &VoteResult{raftId: server, resp: resp}
 
 						} else {
-							laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate 🥲Do not get voteRPC reply from [%d] ,voteGranted Nil", rf.currentTerm, rf.me, server)
+							// laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate 🥲Do not get voteRPC reply from [%d] ,voteGranted Nil", rf.currentTerm, rf.me, server)
 							VoteResultChan <- &VoteResult{raftId: server, resp: nil}
 						}
 
@@ -867,7 +867,7 @@ func (rf *Raft) electionLoop() {
 					rf.lastSendHeartbeatTime = time.Now().Add(-time.Millisecond * 2 * HeartBeatInterval)
 					return
 				}
-				laneLog.Logger.Infof("🎫Rec Term[%d] [%d]candidate Fail to get majority Vote", rf.currentTerm, rf.me)
+				// laneLog.Logger.Infof("🎫Rec Term[%d] [%d]candidate Fail to get majority Vote", rf.currentTerm, rf.me)
 			}
 
 		}()

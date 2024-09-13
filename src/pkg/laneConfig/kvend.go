@@ -7,10 +7,10 @@ type Kvserver struct {
 }
 
 func (c *Kvserver) Default() {
-	*c = DefaultKVEnd()
+	*c = DefaultKVServer()
 }
 
-func DefaultKVEnd() Kvserver {
+func DefaultKVServer() Kvserver {
 	return Kvserver{
 		Addr:  "127.0.0.1",
 		Port:  ":51242",
