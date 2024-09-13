@@ -1,0 +1,11 @@
+addr: 127.0.0.1
+port: :51240
+rafts:
+  me: 0
+  clients:
+    - addr: 127.0.0.1
+      port: :32300
+    - addr: 127.0.0.1
+      port: :32301
+    - addr: 127.0.0.1
+      port: :32302

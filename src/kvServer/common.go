@@ -1,15 +1,13 @@
 package kvraft
 
-import "log"
+// const Debug = false
 
-const Debug = false
-
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug {
-		log.Printf(format, a...)
-	}
-	return
-}
+// func laneLog.Logger.Infof(format string, a ...interface{}) {
+// 	if Debug {
+// 		laneLog.Logger.Infof(format, a...)
+// 	}
+// 	return
+// }
 
 type Op struct {
 	ClientId int64 //客户端标识，用于应对重复请求

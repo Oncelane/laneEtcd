@@ -12,3 +12,7 @@
 - 动态集群
 - 租约机制，从节点读
 - 事务
+
+# proto
+
+protoc --go_out=.. --go-grpc_out=.. --go-grpc_opt=require_unimplemented_servers=false -I. -Iproto proto/pb/pb.proto

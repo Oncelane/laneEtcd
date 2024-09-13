@@ -1,16 +1,16 @@
 package kvraft
 
 import (
+	"context"
 	"crypto/rand"
+	"laneEtcd/proto/pb"
 	"log"
 	"math/big"
 	"time"
-
-	"6.5840/labrpc"
 )
 
 type Clerk struct {
-	servers []*labrpc.ClientEnd
+	servers []*KVEnd
 	// You will have to modify this struct.
 	nextSendLocalId int
 	LatestOffset    int32
@@ -26,7 +26,7 @@ func nrand() int64 {
 	return x
 }
 
-func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
+func MakeClerk(servers []*KVEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
@@ -56,7 +56,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
 
-	args := GetArgs{
+	args := pb.GetArgs{
 		Key:          key,
 		ClientId:     ck.clientId,
 		LatestOffset: ck.LatestOffset,
@@ -75,15 +75,15 @@ func (ck *Clerk) Get(key string) string {
 			}
 		}
 
-		reply := GetReply{}
-		// DPrintf("clinet [%d] [Get]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args)
-		ok := ck.servers[ck.nextSendLocalId].Call("KVServer.Get", &args, &reply)
+		reply := &pb.GetReply{}
+		// laneLog.Logger.Infof("clinet [%d] [Get]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args)
+		reply, err := ck.servers[ck.nextSendLocalId].conn.Get(context.Background(), &args)
 
 		//根据reply初始化一下本地server表
 
 		lastSendLocalId = ck.nextSendLocalId
-		if !ok {
-			// DPrintf("clinet [%d] [Get]:[lost] args[%v]", ck.clientId, args)
+		if err != nil {
+			// laneLog.Logger.Infof("clinet [%d] [Get]:[lost] args[%v]", ck.clientId, args)
 			//对面失联，那就换下一个继续发
 			ck.changeNextSendId()
 			continue
@@ -94,13 +94,13 @@ func (ck *Clerk) Get(key string) string {
 		switch reply.Err {
 		case OK:
 			ck.LatestOffset++
-			// DPrintf("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
+			// laneLog.Logger.Infof("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
 			return reply.Value
 		case ErrNoKey:
-			// DPrintf("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
+			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
 			return ""
 		case ErrWrongLeader:
-			// DPrintf("clinet [%d] [Get]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
+			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
 			if reply.LeaderId == -1 {
 				//寻找下一个
@@ -115,7 +115,7 @@ func (ck *Clerk) Get(key string) string {
 
 			}
 		case ErrWaitForRecover:
-			// DPrintf("client [%d] [Get]:[Wait for leader recover]", ck.clientId)
+			// laneLog.Logger.Infof("client [%d] [Get]:[Wait for leader recover]", ck.clientId)
 			time.Sleep(time.Millisecond * 200)
 		default:
 			log.Fatalf("Client [%d] Get reply unknown err [%s](probaly not init)", ck.clientId, reply.Err)
@@ -134,7 +134,7 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
-	args := PutAppendArgs{
+	args := pb.PutAppendArgs{
 		Key:          key,
 		Value:        value,
 		Op:           op,
@@ -153,15 +153,15 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			}
 		}
 
-		// DPrintf("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args)
-		reply := PutAppendReply{}
-		ok := ck.servers[ck.nextSendLocalId].Call("KVServer.PutAppend", &args, &reply)
+		// laneLog.Logger.Infof("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args)
+		reply := &pb.PutAppendReply{}
+		reply, err := ck.servers[ck.nextSendLocalId].conn.PutAppend(context.Background(), &args)
 
 		//根据reply初始化一下本地server表
 
 		lastSendLocalId = ck.nextSendLocalId
-		if !ok {
-			// DPrintf("clinet [%d] [PutAppend]:[lost] args[%v]", ck.clientId, args)
+		if err != nil {
+			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[lost] args[%v]", ck.clientId, args)
 			//对面失联，那就换下一个继续发
 			ck.changeNextSendId()
 			continue
@@ -172,12 +172,12 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		switch reply.Err {
 		case OK:
 			ck.LatestOffset++
-			// DPrintf("clinet [%d] [PutAppend]:[OK] args[%v] reply[%v]", ck.clientId, args, reply)
+			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[OK] args[%v] reply[%v]", ck.clientId, args, reply)
 			return
 		case ErrNoKey:
 			// log.Fatalf("Client [%d] [PutAppend]:reply ErrNokey, but should not happend to putAndAppend args", ck.clientId)
 		case ErrWrongLeader:
-			// DPrintf("clinet [%d] [PutAppend]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
+			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
 			if reply.LeaderId == -1 {
 				//寻找下一个

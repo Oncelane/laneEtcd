@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package lane.pb;
-option go_package = "laneETCD/proto/pb;pb";
+option go_package = "laneEtcd/proto/pb;pb";
 
 message RequestVoteArgs {
   int64 Term = 1;
@@ -45,3 +45,46 @@ message SnapshotInstallArgs {
 }
 
 message SnapshotInstallReply { int64 Term = 1; }
+
+service raft {
+  rpc SnapshotInstall(SnapshotInstallArgs) returns (SnapshotInstallReply);
+  rpc AppendEntries(AppendEntriesArgs) returns (AppendEntriesReply);
+  rpc RequestVote(RequestVoteArgs) returns (RequestVoteReply);
+}
+
+// Put or Append
+message PutAppendArgs {
+  string Key = 1;
+  string Value = 2;
+  string Op = 3; // "Put" or "Append"
+                 // You'll have to add definitions here.
+                 // Field names must start with capital
+                 // letters, otherwise RPC will break.
+  int64 ClientId = 4;
+  int32 LatestOffset = 5;
+}
+
+message PutAppendReply {
+  string Err = 1;
+  int32 LeaderId = 2;
+  int32 ServerId = 3;
+}
+
+message GetArgs {
+  string Key = 1;
+  // You'll have to add definitions here.
+  int64 ClientId = 2;
+  int32 LatestOffset = 3;
+}
+
+message GetReply {
+  string Err = 1;
+  int32 LeaderId = 2;
+  string Value = 3;
+  int32 ServerId = 4;
+}
+
+service kvserver {
+  rpc Get(GetArgs) returns (GetReply);
+  rpc PutAppend(PutAppendArgs) returns (PutAppendReply);
+}
