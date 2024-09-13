@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"laneEtcd/proto/pb"
+	"laneEtcd/src/pkg/laneConfig"
 	"log"
 	"math/big"
 	"time"
@@ -24,6 +25,15 @@ func nrand() int64 {
 	bigx, _ := rand.Int(rand.Reader, max)
 	x := bigx.Int64()
 	return x
+}
+
+func NewClerk(conf laneConfig.Clerk) *Clerk {
+	// servers := make([]*KVEnd, len(conf.EtcdAddrs))
+	return nil
+}
+
+func (c *Clerk) watchEtcd() {
+
 }
 
 func MakeClerk(servers []*KVEnd) *Clerk {
