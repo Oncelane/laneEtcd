@@ -1,5 +1,7 @@
 package kvraft
 
+import "errors"
+
 // const Debug = false
 
 // func laneLog.Logger.Infof(format string, a ...interface{}) {
@@ -23,6 +25,9 @@ const (
 	ErrWrongLeader    = "ErrWrongLeader"
 	ErrWaitForRecover = "Wait"
 )
+
+var ErrNil error = errors.New("etcd has no key")
+var ErrFaild error = errors.New("etcd has faild")
 
 const (
 	getT = iota

@@ -98,8 +98,10 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 		value = kv.kvMap.GetWithPrefix(args.Key)
 
 	} else {
-		v, _ := kv.kvMap.Get(args.Key)
-		value = append(value, v)
+		v, ok := kv.kvMap.Get(args.Key)
+		if ok {
+			value = append(value, v)
+		}
 	}
 
 	if len(value) != 0 {

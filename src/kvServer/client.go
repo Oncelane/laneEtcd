@@ -82,18 +82,22 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 
-func (ck *Clerk) Get(key string) string {
-	if r := ck.doGet(key, false); len(r) == 1 {
-		return r[0]
+func (ck *Clerk) Get(key string) (string, error) {
+	r, err := ck.doGet(key, false)
+	if err != nil {
+		return "", err
 	}
-	return ""
+	if len(r) == 1 {
+		return r[0], nil
+	}
+	return "", ErrNil
 }
 
-func (ck *Clerk) GetWithPrefix(key string) []string {
+func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
 	return ck.doGet(key, true)
 }
 
-func (ck *Clerk) doGet(key string, withPrefix bool) []string {
+func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
@@ -103,12 +107,15 @@ func (ck *Clerk) doGet(key string, withPrefix bool) []string {
 		LatestOffset: ck.LatestOffset,
 		WithPrefix:   withPrefix,
 	}
-
+	totalCount := 0
 	count := 0
 	lastSendLocalId := -1
 
 	for {
-
+		totalCount++
+		if totalCount > 2*len(ck.servers)*3 {
+			return nil, ErrFaild
+		}
 		if ck.nextSendLocalId == lastSendLocalId {
 			count++
 			if count > 3 {
@@ -149,10 +156,13 @@ func (ck *Clerk) doGet(key string, withPrefix bool) []string {
 		case OK:
 			ck.LatestOffset++
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
-			return reply.Value
+			if len(reply.Value) == 0 {
+				return nil, ErrNil
+			}
+			return reply.Value, nil
 		case ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
-			return nil
+			return nil, ErrNil
 		case ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
@@ -186,7 +196,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) []string {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
-func (ck *Clerk) PutAppend(key string, value string, op string) {
+func (ck *Clerk) PutAppend(key string, value string, op string) error {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
@@ -199,8 +209,12 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	}
 	count := 0
 	lastSendLocalId := -1
+	totalCount := 0
 	for {
-
+		totalCount++
+		if totalCount > 2*len(ck.servers)*3 {
+			return ErrFaild
+		}
 		if ck.nextSendLocalId == lastSendLocalId {
 			count++
 			if count > 5 {
@@ -223,9 +237,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			continue
 		}
 
-		laneLog.Logger.Infof("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args.String())
+		// laneLog.Logger.Infof("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args.String())
 		reply, err := ck.servers[ck.nextSendLocalId].conn.PutAppend(context.Background(), &args)
-		laneLog.Logger.Debugln("receive etcd:", reply.String(), err)
+		// laneLog.Logger.Debugln("receive etcd:", reply.String(), err)
 		//根据reply初始化一下本地server表
 
 		lastSendLocalId = ck.nextSendLocalId
@@ -242,7 +256,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		case OK:
 			ck.LatestOffset++
 			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[OK] args[%v] reply[%v]", ck.clientId, args, reply)
-			return
+			return nil
 		case ErrNoKey:
 			// laneLog.Logger.Fatalf("Client [%d] [PutAppend]:reply ErrNokey, but should not happend to putAndAppend args", ck.clientId)
 		case ErrWrongLeader:

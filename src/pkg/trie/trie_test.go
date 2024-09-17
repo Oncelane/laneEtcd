@@ -14,7 +14,8 @@ func TestTeri(test *testing.T) {
 	t.Put("b", "4")
 	n, ok := t.Get("a")
 	log.Println("v = ", n, "ok =", ok)
-
+	n, ok = t.Get("c")
+	log.Println("v = ", n, "ok =", ok)
 	data, err := t.Marshal()
 	if err != nil {
 		test.Error(err)
@@ -25,4 +26,5 @@ func TestTeri(test *testing.T) {
 	}
 	rt := t.GetWithPrefix("a")
 	log.Println("v = ", rt)
+
 }
