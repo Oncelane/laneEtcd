@@ -1,7 +1,7 @@
 package raft
 
 import (
-	"laneEtcd/src/pkg/laneLog"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 )
 
 // Debugging

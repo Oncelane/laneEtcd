@@ -2,10 +2,11 @@ package main
 
 import (
 	"flag"
-	kvraft "laneEtcd/src/kvServer"
-	"laneEtcd/src/pkg/laneConfig"
-	"laneEtcd/src/pkg/laneLog"
-	"laneEtcd/src/raft"
+
+	kvraft "github.com/Oncelane/laneEtcd/src/kvServer"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
+	"github.com/Oncelane/laneEtcd/src/raft"
 )
 
 var (

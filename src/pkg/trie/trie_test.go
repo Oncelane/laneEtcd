@@ -1,9 +1,10 @@
 package trie_test
 
 import (
-	"laneEtcd/src/pkg/trie"
 	"log"
 	"testing"
+
+	"github.com/Oncelane/laneEtcd/src/pkg/trie"
 )
 
 func TestTeri(test *testing.T) {

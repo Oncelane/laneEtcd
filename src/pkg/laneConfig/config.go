@@ -1,9 +1,10 @@
 package laneConfig
 
 import (
-	"laneEtcd/src/pkg/laneLog"
 	"log"
 	"os"
+
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 
 	yaml "gopkg.in/yaml.v3"
 )

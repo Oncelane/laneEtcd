@@ -1,8 +1,8 @@
 package kvraft
 
 import (
-	"laneEtcd/proto/pb"
-	"laneEtcd/src/pkg/laneLog"
+	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

@@ -3,12 +3,13 @@ package kvraft
 import (
 	"context"
 	"crypto/rand"
-	"laneEtcd/proto/pb"
-	"laneEtcd/src/pkg/laneConfig"
-	"laneEtcd/src/pkg/laneLog"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 )
 
 type Clerk struct {

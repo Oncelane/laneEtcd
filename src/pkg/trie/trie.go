@@ -3,7 +3,8 @@ package trie
 import (
 	"bytes"
 	"encoding/gob"
-	"laneEtcd/src/pkg/laneLog"
+
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 
 	"github.com/derekparker/trie"
 )

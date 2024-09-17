@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
-	"laneEtcd/proto/pb"
-	"laneEtcd/src/pkg/laneConfig"
-	"laneEtcd/src/pkg/laneLog"
-	"laneEtcd/src/raft"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"laneEtcd/src/pkg/trie"
+	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
+	"github.com/Oncelane/laneEtcd/src/raft"
+
+	"github.com/Oncelane/laneEtcd/src/pkg/trie"
 
 	"google.golang.org/grpc"
 )

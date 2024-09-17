@@ -23,15 +23,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"laneEtcd/proto/pb"
-	"laneEtcd/src/pkg/laneConfig"
-	"laneEtcd/src/pkg/laneLog"
 	"math/rand"
 	"net"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
+	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 
 	"google.golang.org/grpc"
 )
