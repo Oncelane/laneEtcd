@@ -83,6 +83,17 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 // arguments. and reply must be passed as a pointer.
 
 func (ck *Clerk) Get(key string) string {
+	if r := ck.doGet(key, false); len(r) == 1 {
+		return r[0]
+	}
+	return ""
+}
+
+func (ck *Clerk) GetWithPrefix(key string) []string {
+	return ck.doGet(key, true)
+}
+
+func (ck *Clerk) doGet(key string, withPrefix bool) []string {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
@@ -90,6 +101,7 @@ func (ck *Clerk) Get(key string) string {
 		Key:          key,
 		ClientId:     ck.clientId,
 		LatestOffset: ck.LatestOffset,
+		WithPrefix:   withPrefix,
 	}
 
 	count := 0
@@ -140,7 +152,7 @@ func (ck *Clerk) Get(key string) string {
 			return reply.Value
 		case ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
-			return ""
+			return nil
 		case ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader

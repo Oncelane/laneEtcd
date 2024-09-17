@@ -909,11 +909,14 @@ func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 		args.PrevLogTerm = int64(rf.log[rf.index2LogPos(int(args.PrevLogIndex))].Term)
 	}
 	if rf.index2LogPos(rf.nextIndex[server]) >= 0 && rf.index2LogPos(rf.nextIndex[server]) < len(rf.log) { //有nextIndex
-		entrys := make([]pb.LogType, len(rf.log)-rf.index2LogPos(rf.nextIndex[server]))
-		args.Entries = make([]*pb.LogType, len(rf.log)-rf.index2LogPos(rf.nextIndex[server]))
-		copy(entrys, rf.log[rf.index2LogPos(rf.nextIndex[server]):])
-		for i := rf.index2LogPos(rf.nextIndex[server]); i < len(rf.log); i++ {
-			args.Entries[i] = &entrys[i]
+		entrys := rf.log[rf.index2LogPos(rf.nextIndex[server]):]
+		// args.Entries = make([]*pb.LogType, len(rf.log)-rf.index2LogPos(rf.nextIndex[server]))
+		// copy(entrys, rf.log[rf.index2LogPos(rf.nextIndex[server]):])
+		// for i := rf.index2LogPos(rf.nextIndex[server]); i < len(rf.log); i++ {
+		// 	args.Entries = append(args.Entries, &entrys[i])
+		// }
+		for i := range entrys {
+			args.Entries = append(args.Entries, &entrys[i])
 		}
 		// args.Entries = append(args.Entries, rf.log[rf.index2LogPos(rf.nextIndex[server]):]...)
 	}

@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"laneEtcd/src/pkg/trie"
+
 	"google.golang.org/grpc"
 )
 
@@ -36,7 +38,7 @@ type KVServer struct {
 	//lastInclude
 	lastIncludeIndex int
 	//log state machine
-	kvMap map[string]string
+	kvMap *trie.TrieX
 
 	//缓存的log, seq->index,reply
 	duplicateMap map[int64]duplicateType
@@ -51,7 +53,7 @@ type duplicateType struct {
 
 func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply, err error) {
 	reply = new(pb.GetReply)
-	reply.Value = "i should not with ok symble"
+	reply.Value = []string{"i should not with ok symble"}
 	reply.Err = ErrWrongLeader
 	reply.LeaderId = int32(kv.rf.GetleaderId())
 	reply.ServerId = int32(kv.me)
@@ -91,8 +93,16 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	//跟raft层之间的同步问题，raft刚当选leader的时候，还没有
 
 	//直接返回
-	value, find := kv.kvMap[args.Key]
-	if find {
+	var value []string
+	if args.WithPrefix {
+		value = kv.kvMap.GetWithPrefix(args.Key)
+
+	} else {
+		v, _ := kv.kvMap.Get(args.Key)
+		value = append(value, v)
+	}
+
+	if len(value) != 0 {
 		if kv.lastAppliedIndex >= readLastIndex && kv.rf.GetLeader() && term == kv.rf.GetTerm() {
 			reply.Err = OK
 			reply.Value = value
@@ -266,7 +276,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 			Offset: op_type.Offset,
 			Reply:  "",
 		}
-		kv.kvMap[op_type.Key] = op_type.Value
+		kv.kvMap.Put(op_type.Key, op_type.Value)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s,%s] [map] -> %v", kv.me, op_type.Key, op_type.Value, kv.kvMap)
 		laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s : %s] ", kv.me, op_type.Key, op_type.Value)
 	case appendT:
@@ -279,7 +289,8 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 			Offset: op_type.Offset,
 			Reply:  "",
 		}
-		kv.kvMap[op_type.Key] += op_type.Value
+		ori, _ := kv.kvMap.Get(op_type.Key)
+		kv.kvMap.Put(op_type.Key, ori+op_type.Value)
 		laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
 	case getT:
 		laneLog.Logger.Fatalf("日志中不应该出现getType")
@@ -318,8 +329,20 @@ func (kv *KVServer) checkifNeedSnapshot(spanshotindex int) {
 	if err := enc.Encode(kv.duplicateMap); err != nil {
 		laneLog.Logger.Fatalf("snapshot duplicateMap encoder fail:%s", err)
 	}
-	if err := enc.Encode(kv.kvMap); err != nil {
-		laneLog.Logger.Fatalf("snapshot kvMap encoder fail:%s", err)
+	keys := kv.kvMap.Keys()
+	values := make([]string, 0)
+	for _, key := range keys {
+
+		value, _ := kv.kvMap.Get(key)
+		values = append(values, value)
+	}
+	err := enc.Encode(keys)
+	if err != nil {
+		laneLog.Logger.Fatalln("encode err", err)
+	}
+	err = enc.Encode(values)
+	if err != nil {
+		laneLog.Logger.Fatalln("encode err", err)
 	}
 
 	//将状态机传了进去
@@ -337,15 +360,26 @@ func (kv *KVServer) readPersist(data []byte) {
 	r := bytes.NewBuffer(data)
 	d := gob.NewDecoder(r)
 
-	kvMap := make(map[string]string)
 	duplicateMap := make(map[int64]duplicateType)
 	if err := d.Decode(&duplicateMap); err != nil {
 		laneLog.Logger.Fatalf("decode err:%s", err)
 	}
-	if err := d.Decode(&kvMap); err != nil {
-		laneLog.Logger.Fatalf("decode err:%s", err)
+
+	newKvmap := trie.NewTrieX()
+	keys := make([]string, 0)
+	values := make([]string, 0)
+	err := d.Decode(&keys)
+	if err != nil {
+		laneLog.Logger.Fatalln("read persiset err", err)
 	}
-	kv.kvMap = kvMap
+	err = d.Decode(&values)
+	if err != nil {
+		laneLog.Logger.Fatalln("read persiset err", err)
+	}
+	for i := range keys {
+		newKvmap.Put(keys[i], values[i])
+	}
+	kv.kvMap = newKvmap
 	kv.duplicateMap = duplicateMap
 
 	laneLog.Logger.Infof("server [%d] after map[%v]", kv.me, kv.kvMap)
@@ -386,6 +420,7 @@ func (kv *KVServer) killed() bool {
 func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, maxraftstate int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
+	var err error
 	gob.Register(Op{})
 	gob.Register(map[string]string{})
 	gob.Register(map[int64]duplicateType{})
@@ -402,7 +437,13 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 	kv.lastAppliedIndex = 0
 	kv.lastIncludeIndex = 0
 	//state machine
-	kv.kvMap = make(map[string]string)
+	kv.kvMap = trie.NewTrieX()
+
+	if err != nil {
+		laneLog.Logger.Fatalln("trieMap init error", err)
+		return nil
+	}
+
 	//log
 	kv.duplicateMap = make(map[int64]duplicateType)
 
@@ -422,6 +463,7 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 			laneLog.Logger.Fatalln("failed to serve : ", err.Error())
 		}
 	}()
+
 	laneLog.Logger.Infoln("etcd serivce is running on addr:", conf.Addr+conf.Port)
 	kv.grpc = gServer
 

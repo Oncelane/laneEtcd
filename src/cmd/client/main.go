@@ -21,4 +21,11 @@ func main() {
 	ck.Put("logic", "testLogicAddr")
 	laneLog.Logger.Infoln("put success")
 	laneLog.Logger.Infoln("get success:", ck.Get("logic"))
+
+	ck.Put("logic:0", "testLogicAddr0 ")
+	ck.Put("logic:1", "testLogicAddr1 ")
+	ck.Put("logic:2", "testLogicAddr2 ")
+	ck.Put("logic:3", "testLogicAddr3 ")
+	laneLog.Logger.Infoln("put success")
+	laneLog.Logger.Infoln("get success:", ck.GetWithPrefix("logic"))
 }

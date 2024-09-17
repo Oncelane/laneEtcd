@@ -75,12 +75,13 @@ message GetArgs {
   // You'll have to add definitions here.
   int64 ClientId = 2;
   int32 LatestOffset = 3;
+  bool withPrefix = 4;
 }
 
 message GetReply {
   string Err = 1;
   int32 LeaderId = 2;
-  string Value = 3;
+  repeated string Value = 3;
   int32 ServerId = 4;
 }
 
