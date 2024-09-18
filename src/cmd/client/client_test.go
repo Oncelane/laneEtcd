@@ -1,9 +1,11 @@
-package main
+package client_test
 
 import (
 	"flag"
+	"strconv"
+	"testing"
 
-	kvraft "github.com/Oncelane/laneEtcd/src/kvServer"
+	"github.com/Oncelane/laneEtcd/src/kvraft"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 )
@@ -12,7 +14,7 @@ var (
 	ConfigPath = flag.String("c", "config.yml", "path fo config.yml folder")
 )
 
-func main() {
+func TestEtcd(t *testing.T) {
 
 	flag.Parse()
 	conf := laneConfig.Clerk{}
@@ -34,4 +36,23 @@ func main() {
 	laneLog.Logger.Infoln("put success")
 	rt, err := ck.GetWithPrefix("logic")
 	laneLog.Logger.Infoln("get success r= ", rt, "err=", err)
+}
+
+func TestMany(t *testing.T) {
+
+	flag.Parse()
+	conf := laneConfig.Clerk{}
+	laneConfig.Init(*ConfigPath, &conf)
+	laneLog.Logger.Debugln("check conf", conf)
+	ck := kvraft.MakeClerk(conf)
+
+	for i := range 100 {
+		ck.Put("logic"+strconv.FormatInt(int64(i), 10), "testLogicAddr"+strconv.FormatInt(int64(i), 10))
+	}
+	rt, err := ck.GetWithPrefix("logic")
+	if err != nil {
+		t.Error(err)
+	}
+	laneLog.Logger.Infoln(rt)
+
 }

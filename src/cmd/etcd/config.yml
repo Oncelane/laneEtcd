@@ -1,11 +1,12 @@
 addr: 127.0.0.1
 port: :51242
 rafts:
-    me: 0
-    clients:
-        - addr: 127.0.0.1
-          port: :32300
-        - addr: 127.0.0.1
-          port: :32301
-        - addr: 127.0.0.1
-          port: :32302
+  me: 0
+  clients:
+    - addr: 127.0.0.1
+      port: :32300
+    - addr: 127.0.0.1
+      port: :32301
+    - addr: 127.0.0.1
+      port: :32302
+databasepath: "data"

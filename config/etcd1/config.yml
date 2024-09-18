@@ -9,3 +9,5 @@ rafts:
       port: :32301
     - addr: 127.0.0.1
       port: :32302
+databasepath: "data0"
+maxraftstate: 100000

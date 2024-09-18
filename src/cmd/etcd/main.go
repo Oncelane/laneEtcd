@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	kvraft "github.com/Oncelane/laneEtcd/src/kvServer"
+	"github.com/Oncelane/laneEtcd/src/kvraft"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 	"github.com/Oncelane/laneEtcd/src/raft"
@@ -22,6 +22,6 @@ func main() {
 	// conf.Clients[conf.Me].Addr+conf.Clients[conf.Me].Addr
 
 	laneLog.InitLogger("kvserver", true)
-	_ = kvraft.StartKVServer(conf, conf.Rafts.Me, raft.MakePersister(), 100000)
+	_ = kvraft.StartKVServer(conf, conf.Rafts.Me, raft.MakePersister("/raftstate.dat", "/snapshot.dat", conf.DataBasePath), conf.Maxraftstate)
 	select {}
 }
