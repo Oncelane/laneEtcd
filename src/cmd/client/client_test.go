@@ -53,6 +53,14 @@ func TestMany(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	laneLog.Logger.Infoln(rt)
+	laneLog.Logger.Infoln("before del:", rt)
 
+	for i := range 100 {
+		ck.Delete("logic" + strconv.FormatInt(int64(i), 10))
+	}
+	rt, err = ck.GetWithPrefix("logic")
+	if err != kvraft.ErrNil {
+		t.Error(err)
+	}
+	laneLog.Logger.Infoln("after del", rt)
 }

@@ -46,6 +46,10 @@ func (t *TrieX) Put(key, value string) {
 	t.tree.Add(key, value)
 }
 
+func (t *TrieX) Del(key string) {
+	t.tree.Remove(key)
+}
+
 func (t *TrieX) Keys() []string {
 	return t.tree.Keys()
 }

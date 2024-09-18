@@ -292,3 +292,7 @@ func (ck *Clerk) Put(key string, value string) error {
 func (ck *Clerk) Append(key string, value string) error {
 	return ck.putAppend(key, value, "Append")
 }
+
+func (ck *Clerk) Delete(key string) error {
+	return ck.putAppend(key, "", "Del")
+}

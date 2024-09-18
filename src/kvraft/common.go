@@ -33,6 +33,7 @@ const (
 	getT = iota
 	putT
 	appendT
+	delT
 	emptyT //indicate a empty log only use to update leader commitIndex
 )
 

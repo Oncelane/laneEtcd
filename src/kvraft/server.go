@@ -109,7 +109,7 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 		if kv.lastAppliedIndex >= readLastIndex && kv.rf.GetLeader() && term == kv.rf.GetTerm() {
 			reply.Err = OK
 			reply.Value = value
-			laneLog.Logger.Infof("server [%d] [Get] [ok] lastAppliedIndex[%d] readLastIndex[%d]", kv.me, kv.lastAppliedIndex, readLastIndex)
+			// laneLog.Logger.Infof("server [%d] [Get] [ok] lastAppliedIndex[%d] readLastIndex[%d]", kv.me, kv.lastAppliedIndex, readLastIndex)
 			// laneLog.Logger.Infof("server [%d] [Get] [Ok] the get args[%v] reply[%v]", kv.me, args, reply)
 		} else {
 			reply.Err = ErrWaitForRecover
@@ -118,8 +118,8 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 
 	} else {
 		reply.Err = ErrNoKey
-		laneLog.Logger.Infof("server [%d] [Get] [NoKey] the get args[%v] reply[%v]", kv.me, args, reply)
-		laneLog.Logger.Infof("server [%d] [map] -> %v", kv.me, kv.kvMap)
+		// laneLog.Logger.Infof("server [%d] [Get] [NoKey] the get args[%v] reply[%v]", kv.me, args, reply)
+		// laneLog.Logger.Infof("server [%d] [map] -> %v", kv.me, kv.kvMap)
 	}
 	return reply, nil
 }
@@ -152,6 +152,8 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 		op.OpType = putT
 	case "Append":
 		op.OpType = appendT
+	case "Del":
+		op.OpType = delT
 	default:
 		laneLog.Logger.Fatalf("unreconize put append args.Op:%s", args.Op)
 	}
@@ -295,6 +297,16 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		ori, _ := kv.kvMap.Get(op_type.Key)
 		kv.kvMap.Put(op_type.Key, ori+op_type.Value)
 		laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
+	case delT:
+		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
+			laneLog.Logger.Infof("⛔server [%d] [Del] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
+			return
+		}
+		kv.duplicateMap[op_type.ClientId] = duplicateType{
+			Offset: op_type.Offset,
+			Reply:  "",
+		}
+		kv.kvMap.Del(op_type.Key)
 	case getT:
 		laneLog.Logger.Fatalf("日志中不应该出现getType")
 	default:
