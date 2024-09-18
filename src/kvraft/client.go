@@ -197,7 +197,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
-func (ck *Clerk) PutAppend(key string, value string, op string) error {
+func (ck *Clerk) putAppend(key string, value string, op string) error {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
@@ -286,9 +286,9 @@ func (ck *Clerk) changeNextSendId() {
 	ck.nextSendLocalId = (ck.nextSendLocalId + 1) % len(ck.servers)
 }
 
-func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
+func (ck *Clerk) Put(key string, value string) error {
+	return ck.putAppend(key, value, "Put")
 }
-func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "Append")
+func (ck *Clerk) Append(key string, value string) error {
+	return ck.putAppend(key, value, "Append")
 }
