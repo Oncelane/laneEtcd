@@ -75,11 +75,34 @@ func BenchmarkLaneEtcdPut(b *testing.B) {
 		}
 	}
 }
+
+func TestLaneEtcdPut(t *testing.T) {
+
+	for range 4 {
+		start := time.Now()
+		err := ck.Put("logic", "test")
+		laneLog.Logger.Warnln("client finish put key[%s] spand time:", "logic", time.Since(start))
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
 func BenchmarkLaneEtcdGet(b *testing.B) {
 	for range b.N {
 		_, err := ck.Get("logic")
 		if err != nil && err != kvraft.ErrNil {
 			b.Error(err)
+		}
+	}
+}
+
+func TestLaneEtcdGet(t *testing.T) {
+	for range 4 {
+		start := time.Now()
+		_, err := ck.Get("logic")
+		laneLog.Logger.Warnln("client finish put key[%s] spand time:", "logic", time.Since(start))
+		if err != nil && err != kvraft.ErrNil {
+			t.Error(err)
 		}
 	}
 }
@@ -118,6 +141,15 @@ func NewEtcd() *clientv3.Client {
 	return c
 }
 
+func BenchmarkEtcdPut(b *testing.B) {
+
+	for range b.N {
+		_, err := etcd.Put(context.Background(), "logic", "test")
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
 func BenchmarkEtcdGet(b *testing.B) {
 	for range b.N {
 		_, err := etcd.Get(context.Background(), "logic")
@@ -126,13 +158,33 @@ func BenchmarkEtcdGet(b *testing.B) {
 		}
 	}
 }
-
-func BenchmarkEtcdPut(b *testing.B) {
+func BenchmarkEtcdGetWithPrefix(b *testing.B) {
 
 	for range b.N {
-		_, err := etcd.Put(context.Background(), "logic", "test")
+		_, err := etcd.Get(context.Background(), "logic", clientv3.WithPrefix())
 		if err != nil {
 			b.Error(err)
+		}
+	}
+}
+func BenchmarkEtcdDelete(b *testing.B) {
+
+	for range b.N {
+		_, err := etcd.Delete(context.Background(), "logic")
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func TestEtcdPut(t *testing.T) {
+
+	for range 4 {
+		start := time.Now()
+		_, err := etcd.Put(context.Background(), "logic", "test")
+		laneLog.Logger.Warnln("client finish put key[%s] spand time:", "logic", time.Since(start))
+		if err != nil {
+			t.Error(err)
 		}
 	}
 }

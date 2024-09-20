@@ -71,8 +71,8 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	if !kv.rf.IisBack {
 		laneLog.Logger.Infof("server [%d] [recovering] reject a [Get]🔰 args[%v]", kv.me, args)
 		reply.Err = ErrWaitForRecover
-		data, err := json.Marshal(Op{
-			OpType: emptyT,
+		data, err := json.Marshal(raft.Op{
+			OpType: raft.EmptyT,
 		})
 		if err != nil {
 			laneLog.Logger.Fatalln(err)
@@ -125,14 +125,17 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 }
 
 func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply *pb.PutAppendReply, err error) {
-
+	// start := time.Now()
+	// laneLog.Logger.Infof("server [%d] [PutAppend] 📨receive a args[%v]", kv.me, args.String())
+	// defer func() {
+	// 	laneLog.Logger.Infof("server [%d] [PutAppend] 📨complete a args[%v] spand time:%v", kv.me, args.String(), time.Since(start))
+	// }()
 	reply = new(pb.PutAppendReply)
 	// Your code here.
 	reply.LeaderId = int32(kv.rf.GetleaderId())
 	reply.Err = ErrWrongLeader
 	reply.ServerId = int32(kv.me)
-	// laneLog.Logger.Infof("server [%d] [PutAppend] 📨receive a args[%v]", kv.me, args.String())
-	// defer laneLog.Logger.Infof("server [%d] [PutAppend] 📨complete a args[%v]", kv.me, args.String())
+
 	if _, ok := kv.rf.GetState(); ok {
 		// laneLog.Logger.Infof("server [%d] [info] i am leader", kv.me)
 	} else {
@@ -140,7 +143,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 		return
 	}
 
-	op := Op{
+	op := raft.Op{
 		ClientId: args.ClientId,
 		Offset:   args.LatestOffset,
 		Key:      args.Key,
@@ -149,11 +152,11 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 
 	switch args.Op {
 	case "Put":
-		op.OpType = putT
+		op.OpType = raft.PutT
 	case "Append":
-		op.OpType = appendT
+		op.OpType = raft.AppendT
 	case "Del":
-		op.OpType = delT
+		op.OpType = raft.DelT
 	default:
 		laneLog.Logger.Fatalf("unreconize put append args.Op:%s", args.Op)
 	}
@@ -162,48 +165,57 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 
 	//这里通过缓存提交，一方面提高了kvserver应对网络错误的回复速度，另一方面进行了第一层的重复检测
 	//但是注意可能同时有两个相同的getDuplicateMap通过这里
-
+	//laneLog.Logger.Debugln("pass", kv.me)
 	kv.mu.Lock()
 	if args.LatestOffset < kv.duplicateMap[args.ClientId].Offset {
 		kv.mu.Unlock()
+		//laneLog.Logger.Debugln("pass", kv.me)
 		return
 	}
 	if args.LatestOffset == kv.duplicateMap[args.ClientId].Offset {
 		reply.Err = OK
 		kv.mu.Unlock()
+		//laneLog.Logger.Debugln("pass", kv.me)
 		return
 	}
 	kv.mu.Unlock()
 
 	//没有在本地缓存发现过seq
 	//向raft提交操作
+	//laneLog.Logger.Debugln("pass", kv.me)
 	data, err := json.Marshal(op)
+	//laneLog.Logger.Debugln("pass", kv.me)
 	if err != nil {
 		panic(err)
 	}
+	//laneLog.Logger.Debugln("pass", kv.me)
 	index, term, isleader := kv.rf.Start(data)
-
+	//laneLog.Logger.Debugln("pass", kv.me)
 	if !isleader {
 		return
 	}
+	//laneLog.Logger.Debugln("pass", kv.me)
 	kv.rf.SendAppendEntriesToAll()
+	//laneLog.Logger.Debugln("pass", kv.me)
 	// laneLog.Logger.Infof("server [%d] submit to raft key[%v] value[%v]", kv.me, op.Key, op.Value)
 	//提交后阻塞等待
 	//等待applyCh拿到对应的index，比对seq是否正确
 	startWait := time.Now()
 	for !kv.killed() {
-		time.Sleep(1 * time.Millisecond)
+
 		kv.mu.Lock()
 
 		if index <= kv.lastAppliedIndex {
 			//双重防重复
 			if args.LatestOffset < kv.duplicateMap[args.ClientId].Offset {
 				kv.mu.Unlock()
+				//laneLog.Logger.Debugln("pass", kv.me)
 				return
 			}
 			if args.LatestOffset == kv.duplicateMap[args.ClientId].Offset {
 				reply.Err = OK
 				kv.mu.Unlock()
+				//laneLog.Logger.Debugln("pass", kv.me)
 				return
 			}
 
@@ -211,6 +223,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 			if term != kv.rf.GetTerm() {
 				//term不匹配了，说明本次提交失效
 				kv.mu.Unlock()
+				//laneLog.Logger.Debugln("pass", kv.me)
 				return
 			} //term匹配，说明本次提交一定是有效的
 
@@ -220,6 +233,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 			if _, isleader := kv.rf.GetState(); !isleader {
 				reply.Err = ErrWrongLeader
 			}
+			//laneLog.Logger.Debugln("pass", kv.me)
 			return
 		}
 		kv.mu.Unlock()
@@ -228,6 +242,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 			laneLog.Logger.Infof("server [%d] [PutAppend] fail [time out] args.index[%d]", kv.me, index)
 			return
 		}
+		time.Sleep(time.Microsecond * 100)
 	}
 	return reply, nil
 }
@@ -238,6 +253,7 @@ func (kv *KVServer) HandleApplych() {
 	for !kv.killed() {
 		select {
 		case raft_type := <-kv.applyCh:
+			//laneLog.Logger.Debugln("pass", kv.me)
 			if kv.killed() {
 				return
 			}
@@ -246,6 +262,7 @@ func (kv *KVServer) HandleApplych() {
 				kv.HandleApplychCommand(raft_type)
 				kv.checkifNeedSnapshot(raft_type.CommandIndex)
 				kv.lastAppliedIndex = raft_type.CommandIndex
+				// laneLog.Logger.Debugln("pass", kv.me, "  raft_type.CommandIndex=", raft_type.CommandIndex)
 			} else if raft_type.SnapshotValid {
 				laneLog.Logger.Infof("📷 server [%d] receive raftSnapshotIndex[%d]", kv.me, raft_type.SnapshotIndex)
 				kv.HandleApplychSnapshot(raft_type)
@@ -259,18 +276,18 @@ func (kv *KVServer) HandleApplych() {
 }
 
 func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
-	op_type := new(Op)
+	op_type := new(raft.Op)
 	err := json.Unmarshal(raft_type.Command, op_type)
 	if err != nil {
 		laneLog.Logger.Fatalf("raft applyArgs.command -> Op 失败,raft_type.Command = %v", raft_type.Command)
 	}
 
-	if op_type.OpType == emptyT {
+	if op_type.OpType == raft.EmptyT {
 		return
 	}
 
 	switch op_type.OpType {
-	case putT:
+	case raft.PutT:
 		//更新状态机
 		//有可能有多个start重复执行，所以这一步要检验重复
 		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
@@ -284,7 +301,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		kv.kvMap.Put(op_type.Key, op_type.Value)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s,%s] [map] -> %v", kv.me, op_type.Key, op_type.Value, kv.kvMap)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s : %s] ", kv.me, op_type.Key, op_type.Value)
-	case appendT:
+	case raft.AppendT:
 		//更新状态机
 		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
 			laneLog.Logger.Infof("⛔server [%d] [Append] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
@@ -297,7 +314,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		ori, _ := kv.kvMap.Get(op_type.Key)
 		kv.kvMap.Put(op_type.Key, ori+op_type.Value)
 		laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
-	case delT:
+	case raft.DelT:
 		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
 			laneLog.Logger.Infof("⛔server [%d] [Del] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
 			return
@@ -307,7 +324,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 			Reply:  "",
 		}
 		kv.kvMap.Del(op_type.Key)
-	case getT:
+	case raft.GetT:
 		laneLog.Logger.Fatalf("日志中不应该出现getType")
 	default:
 		laneLog.Logger.Fatalf("日志中出现未知optype = [%d]", op_type.OpType)
@@ -436,7 +453,7 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
 	var err error
-	gob.Register(Op{})
+	gob.Register(raft.Op{})
 	gob.Register(map[string]string{})
 	gob.Register(map[int64]duplicateType{})
 	kv := new(KVServer)

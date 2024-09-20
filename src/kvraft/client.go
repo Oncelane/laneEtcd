@@ -199,6 +199,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) putAppend(key string, value string, op string) error {
 	// You will have to modify this function.
+
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
 	args := pb.PutAppendArgs{

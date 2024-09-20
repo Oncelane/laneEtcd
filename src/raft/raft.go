@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"math/rand"
 	"net"
 	"sort"
@@ -583,7 +584,7 @@ func (rf *Raft) sendInstallSnapshot(server int, args *pb.SnapshotInstallArgs) (r
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (3D).
-	laneLog.Logger.Infof("SNAPS Term[%d] [%d] 📷Snapshot ask to snap Index[%d] Raft log Len:[%d]", rf.currentTerm, rf.me, index-1, len(rf.log))
+	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] 📷Snapshot ask to snap Index[%d] Raft log Len:[%d]", rf.currentTerm, rf.me, index-1, len(rf.log))
 	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] Wait for the lock🤨", rf.currentTerm, rf.me)
 	rf.mu.Lock()
 	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] Get the lock🔐", rf.currentTerm, rf.me)
@@ -595,7 +596,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 		return
 	}
 	compactLoglen := index - rf.lastIncludeIndex
-	laneLog.Logger.Infof("SNAPS Term[%d] [%d] After📷,lastIncludeIndex[%d]->[%d] lastIncludeTerm[%d]->[%d] len of Log->[%d]", rf.currentTerm, rf.me, rf.lastIncludeIndex, index, rf.lastIncludeTerm, rf.log[rf.index2LogPos(index)].Term, len(rf.log)-compactLoglen)
+	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] After📷,lastIncludeIndex[%d]->[%d] lastIncludeTerm[%d]->[%d] len of Log->[%d]", rf.currentTerm, rf.me, rf.lastIncludeIndex, index, rf.lastIncludeTerm, rf.log[rf.index2LogPos(index)].Term, len(rf.log)-compactLoglen)
 
 	rf.lastIncludeTerm = int(rf.log[rf.index2LogPos(index)].Term)
 	rf.lastIncludeIndex = index
@@ -607,7 +608,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	//把snapshot和raftstate持久化
 	rf.SnapshotDate = snapshot
 	rf.persister.Save(rf.persistWithSnapshot(), snapshot)
-	laneLog.Logger.Infof("📷Cmi Term[%d] [%d] 📦Save snapshot to application[%d] (Receive from up Application)", rf.currentTerm, rf.me, rf.persister.SnapshotSize())
+	// laneLog.Logger.Infof("📷Cmi Term[%d] [%d] 📦Save snapshot to application[%d] (Receive from up Application)", rf.currentTerm, rf.me, rf.persister.SnapshotSize())
 }
 
 const (
@@ -619,7 +620,7 @@ const (
 func (rf *Raft) updateCommitIndex() {
 	//从matchIndex寻找一个大多数服务器认同的N
 	for !rf.killed() {
-		time.Sleep(time.Millisecond * time.Duration(10))
+		time.Sleep(time.Microsecond * 50)
 		_, isleader := rf.GetState()
 		if isleader {
 			rf.mu.Lock()
@@ -652,7 +653,7 @@ func (rf *Raft) undateLastApplied() {
 	var nomore = false
 	for !rf.killed() {
 		if nomore {
-			time.Sleep(time.Millisecond * time.Duration(10))
+			time.Sleep(time.Microsecond * 50)
 		}
 
 		func() {
@@ -757,7 +758,7 @@ func (rf *Raft) sendRequestVote2(server int, args *pb.RequestVoteArgs) (reply *p
 
 func (rf *Raft) electionLoop() {
 	for !rf.killed() {
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Microsecond * 50)
 		func() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
@@ -867,6 +868,12 @@ func (rf *Raft) electionLoop() {
 					}
 					laneLog.Logger.Infof("❗ Term[%d] [%d]candidate -> leader", rf.currentTerm, rf.me)
 					rf.lastSendHeartbeatTime = time.Now().Add(-time.Millisecond * 2 * HeartBeatInterval)
+					data, _ := json.Marshal(Op{
+						OpType: EmptyT,
+					})
+					rf.mu.Unlock()
+					rf.Start(data)
+					rf.mu.Lock()
 					return
 				}
 				// laneLog.Logger.Infof("🎫Rec Term[%d] [%d]candidate Fail to get majority Vote", rf.currentTerm, rf.me)
@@ -985,7 +992,7 @@ func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 
 func (rf *Raft) appendEntriesLoop() {
 	for !rf.killed() {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Microsecond * 50)
 		func() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
