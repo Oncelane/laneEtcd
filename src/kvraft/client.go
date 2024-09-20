@@ -42,7 +42,7 @@ func (c *Clerk) watchEtcd() {
 				k := NewKvClient(c.conf.EtcdAddrs[i])
 				if k != nil {
 					c.servers[i] = k
-					laneLog.Logger.Warnf("update etcd server[%d] addr[%s]", i, c.conf.EtcdAddrs[i])
+					// laneLog.Logger.Warnf("update etcd server[%d] addr[%s]", i, c.conf.EtcdAddrs[i])
 				}
 			}
 		}
@@ -233,8 +233,8 @@ func (ck *Clerk) putAppend(key string, value string, op string) error {
 			}
 		}
 		if validCount == len(ck.servers) {
-			laneLog.Logger.Infoln("not exist valid etcd server")
-			time.Sleep(time.Second)
+			// laneLog.Logger.Infoln("not exist valid etcd server")
+			time.Sleep(time.Millisecond * 10)
 			continue
 		}
 

@@ -18,6 +18,20 @@
 - 动态集群
 - 租约机制，从节点读
 
+性能：
+
+```sh
+goos: linux
+goarch: amd64
+pkg: github.com/Oncelane/laneEtcd/src/cmd/client
+cpu: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
+BenchmarkPut-12                      253          13567027 ns/op
+BenchmarkGet-12                     3387           1064236 ns/op
+BenchmarkGetWithPrefix-12           3439           1081428 ns/op
+BenchmarkDelete-12                   210          16171981 ns/op
+PASS
+```
+
 # proto
 
 protoc --go_out=.. --go-grpc_out=.. --go-grpc_opt=require_unimplemented_servers=false -I. -Iproto proto/pb/pb.proto
