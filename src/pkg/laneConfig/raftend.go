@@ -1,8 +1,8 @@
 package laneConfig
 
 type RaftEnds struct {
-	Me      int
-	Clients []RaftEnd
+	Me        int
+	Endpoints []RaftEnd
 }
 
 type RaftEnd struct {
@@ -17,7 +17,7 @@ func (c *RaftEnds) Default() {
 func DefaultRaftEnds() RaftEnds {
 	return RaftEnds{
 		Me: 0,
-		Clients: []RaftEnd{
+		Endpoints: []RaftEnd{
 			{
 				Addr: "127.0.0.1",
 				Port: ":32300",

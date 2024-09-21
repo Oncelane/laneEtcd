@@ -1192,7 +1192,7 @@ func Make(me int,
 	// start ticker goroutine to start elections
 	// go rf.mainLoop2()
 
-	rf.StartRaft(conf.Clients[me])
+	rf.StartRaft(conf.Endpoints[me])
 	servers := WaitConnect(conf)
 	rf.peers = servers
 
@@ -1223,9 +1223,9 @@ func (rt *Raft) StartRaft(conf laneConfig.RaftEnd) {
 func WaitConnect(conf laneConfig.RaftEnds) []*RaftEnd {
 	laneLog.Logger.Infoln("start wating...")
 	var wait sync.WaitGroup
-	servers := make([]*RaftEnd, len(conf.Clients))
+	servers := make([]*RaftEnd, len(conf.Endpoints))
 	wait.Add(len(servers) - 1)
-	for i := range conf.Clients {
+	for i := range conf.Endpoints {
 		if i == conf.Me {
 			continue
 		}
@@ -1240,9 +1240,9 @@ func WaitConnect(conf laneConfig.RaftEnds) []*RaftEnd {
 				}
 				time.Sleep(time.Millisecond * 500)
 			}
-		}(i, conf.Clients[i])
+		}(i, conf.Endpoints[i])
 	}
 	wait.Wait()
-	laneLog.Logger.Infof("🦖 All %d Connetct", len(conf.Clients))
+	laneLog.Logger.Infof("🦖 All %d Connetct", len(conf.Endpoints))
 	return servers
 }

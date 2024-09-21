@@ -26,14 +26,22 @@
 go test -benchmem -run=^$ -bench ^Benchmark github.com/Oncelane/laneEtcd/src/cmd/client -benchtime=10s
 ```
 
-| 压测项目      | laneEtcd    | Etcd        | 耗时与 Etcd 相比 |
-| ------------- | ----------- | ----------- | ---------------- |
-| Get           | 0.799 ms/op | 0.624 ms/op | +28.0%           |
-| GetWithPrefix | 0.762 ms/op | 0.625 ms/op | +21.9%           |
-| Put           | 2.071 ms/op | 2.325 ms/op | -10.9%           |
-| Delete        | 2.065 ms/op | 2.213 ms/op | -6.7%            |
+| 压测项目      | laneEtcd   | Etcd       | 耗时与 Etcd 相比 |
+| ------------- | ---------- | ---------- | ---------------- |
+| Get           | 0.76 ms/op | 0.61 ms/op | +24.5%           |
+| GetWithPrefix | 0.79 ms/op | 0.61 ms/op | +29.5%           |
+| Put           | 1.64 ms/op | 2.28 ms/op | -28.1%           |
+| Delete        | 1.68 ms/op | 2.20 ms/op | -23.6%           |
 
 读写性能均与 Etcd 较为持平，写性能略胜一筹
+
+> 此压测性能仅作当前阶段参考，并不意味着本项目性能真的超越 Etcd
+>
+> etcd 为了支持事务，保存的数据有版本号，可以指定版本读取历史数据（如果不压缩清除历史版本的数据），如果不指定，默认读取最大版本的数据
+>
+> 而本项目未实现键值对的历史版本，未能很好控制变量
+>
+> 且本项目的 CPU 占用率高于 Etcd 至少两倍以上，是比较大的缺陷
 
 # 运行服务端
 
@@ -41,18 +49,19 @@ go test -benchmem -run=^$ -bench ^Benchmark github.com/Oncelane/laneEtcd/src/cmd
 
 ```sh
 git clone https://github.com/Oncelane/laneEtcd.git
+cd laneEtcd
 make build
 ```
 
 ## 查看启动配置文件
 
 ```yml
-# 根目录下的config中自带三实例集群的配置文件 config.yml
+# 根目录下的config中自带三个成员的配置文件 config.yml,表示每个实例的启动设置，标识为unique的条目不能在集群成员配置中重复
 addr: 127.0.0.1
-port: :51240 # unique
+port: :51240 # unique 客户端与服务端通讯的grpc端口号
 rafts:
-  me: 0 # unique
-  clients:
+  me: 0 # unique 有多少个
+  endpoints: # 服务端之间沟通使用的grpc端口号
     - addr: 127.0.0.1
       port: :32300
     - addr: 127.0.0.1

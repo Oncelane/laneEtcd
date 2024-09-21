@@ -20,9 +20,9 @@ func main() {
 	conf := laneConfig.Kvserver{}
 	laneConfig.Init(*ConfigPath, &conf)
 
-	// conf.Clients[conf.Me].Addr+conf.Clients[conf.Me].Addr
+	// conf.Endpoints[conf.Me].Addr+conf.Endpoints[conf.Me].Addr
 
-	laneLog.InitLogger("kvserver", true, true, true)
+	laneLog.InitLogger("kvserver", false, false, false)
 	_ = kvraft.StartKVServer(conf, conf.Rafts.Me, raft.MakePersister("/raftstate.dat", "/snapshot.dat", conf.DataBasePath), conf.Maxraftstate)
 	select {}
 }
