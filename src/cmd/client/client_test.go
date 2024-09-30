@@ -20,56 +20,44 @@ func init() {
 	ck = kvraft.MakeClerk(conf)
 }
 
-// func TestEtcd(t *testing.T) {
+// 测试TTL功能
 
-// 	flag.Parse()
-// 	conf := laneConfig.Clerk{}
-// 	laneConfig.Init(*ConfigPath, &conf)
-// 	laneLog.Logger.Debugln("check conf", conf)
-// 	ck := kvraft.MakeClerk(conf)
-// 	ck.Put("logic", "testLogicAddr")
-// 	laneLog.Logger.Infoln("put success")
-// 	r, err := ck.Get("logic")
-// 	laneLog.Logger.Infoln("get success r= ", r, "err=", err)
-// 	r, err = ck.Get("no logic")
-// 	laneLog.Logger.Infoln("get success r= ", r, "err=", err)
-
-// 	ck.Put("logic:0", "testLogicAddr0 ")
-// 	ck.Put("logic:1", "testLogicAddr1 ")
-// 	ck.Put("logic:2", "testLogicAddr2 ")
-// 	ck.Put("logic:3", "testLogicAddr3 ")
-// 	laneLog.Logger.Infoln("put success")
-// 	laneLog.Logger.Infoln("put success")
-// 	rt, err := ck.GetWithPrefix("logic")
-// 	laneLog.Logger.Infoln("get success r= ", rt, "err=", err)
-// }
-
-// func TestMany(t *testing.T) {
-// 	start := time.Now()
-// 	for i := range 100 {
-// 		ck.Put("logic"+strconv.FormatInt(int64(i), 10), "testLogicAddr"+strconv.FormatInt(int64(i), 10))
-// 	}
-// 	laneLog.Logger.Infoln("put 100 spand time", time.Since(start))
-// 	_, err := ck.GetWithPrefix("logic")
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-// 	laneLog.Logger.Infoln("before del:")
-
-// 	for i := range 100 {
-// 		ck.Delete("logic" + strconv.FormatInt(int64(i), 10))
-// 	}
-// 	rt, err := ck.GetWithPrefix("logic")
-// 	if err != nil && err != kvraft.ErrNil {
-// 		t.Error(err)
-// 	}
-// 	laneLog.Logger.Infoln("after del", rt)
-// }
+func TestTimeOut(t *testing.T) {
+	key := "comet"
+	value := "localhost"
+	ttl := time.Millisecond * 300
+	ck.Put(key, value, ttl)
+	laneLog.Logger.Infof("set key [%s] value [%s] TTL[%v]", key, value, ttl)
+	laneLog.Logger.Infoln("time.Sleep for 200ms")
+	time.Sleep(time.Millisecond * 200)
+	v, err := ck.Get("comet")
+	if err == kvraft.ErrNil {
+		laneLog.Logger.Infoln("err:", err)
+	} else {
+		laneLog.Logger.Infof("get value [%s]", v)
+	}
+	laneLog.Logger.Infoln("time.Sleep for 200ms")
+	time.Sleep(time.Millisecond * 200)
+	v, err = ck.Get("comet")
+	if err == kvraft.ErrNil {
+		laneLog.Logger.Infoln("err:", err)
+	} else {
+		laneLog.Logger.Infof("get value [%s]", v)
+	}
+	laneLog.Logger.Infof("reset key [%s] value [%s] TTL[%v]", key, value, ttl)
+	ck.Put("comet", "localhost", time.Millisecond*300)
+	v, err = ck.Get("comet")
+	if err == kvraft.ErrNil {
+		laneLog.Logger.Infoln("err:", err)
+	} else {
+		laneLog.Logger.Infof("get value [%s]", v)
+	}
+}
 
 func BenchmarkLaneEtcdPut(b *testing.B) {
 
 	for range b.N {
-		err := ck.Put("logic", "test")
+		err := ck.Put("logic", "test", 0)
 		if err != nil {
 			b.Error(err)
 		}
@@ -80,7 +68,7 @@ func TestLaneEtcdPut(t *testing.T) {
 
 	for range 4 {
 		start := time.Now()
-		err := ck.Put("logic", "test")
+		err := ck.Put("logic", "test", 0)
 		laneLog.Logger.Warnln("client finish put key[%s] spand time:", "logic", time.Since(start))
 		if err != nil {
 			t.Error(err)

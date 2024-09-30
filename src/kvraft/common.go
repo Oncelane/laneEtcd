@@ -54,3 +54,8 @@ type GetReply struct {
 	Value    string
 	ServerId int
 }
+
+type ValueType struct {
+	Value    string
+	DeadTime int64
+}

@@ -3,6 +3,7 @@ package kvraft
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"math/big"
 	"sync"
 	"time"
@@ -82,21 +83,6 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
-
-func (ck *Clerk) Get(key string) (string, error) {
-	r, err := ck.doGet(key, false)
-	if err != nil {
-		return "", err
-	}
-	if len(r) == 1 {
-		return r[0], nil
-	}
-	return "", ErrNil
-}
-
-func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
-	return ck.doGet(key, true)
-}
 
 func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 	// You will have to modify this function.
@@ -287,13 +273,75 @@ func (ck *Clerk) changeNextSendId() {
 	ck.nextSendLocalId = (ck.nextSendLocalId + 1) % len(ck.servers)
 }
 
-func (ck *Clerk) Put(key string, value string) error {
-	return ck.putAppend(key, value, "Put")
+func (ck *Clerk) ValueToData(key string, value string, TTL time.Duration) (data string) {
+	v := ValueType{
+		Value:    value,
+		DeadTime: 0,
+	}
+	if TTL != 0 {
+		v.DeadTime = time.Now().Add(TTL).UnixMilli()
+	}
+	d, err := json.Marshal(v)
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	return string(d)
 }
-func (ck *Clerk) Append(key string, value string) error {
-	return ck.putAppend(key, value, "Append")
+
+func (ck *Clerk) DateToValue(data string) ValueType {
+	v := ValueType{}
+	err := json.Unmarshal([]byte(data), &v)
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	return v
+}
+
+func (ck *Clerk) Put(key string, value string, TTL time.Duration) error {
+	d := ck.ValueToData(key, value, TTL)
+	return ck.putAppend(key, string(d), "Put")
+}
+func (ck *Clerk) Append(key string, value string, TTL time.Duration) error {
+	d := ck.ValueToData(key, value, TTL)
+	return ck.putAppend(key, string(d), "Append")
 }
 
 func (ck *Clerk) Delete(key string) error {
 	return ck.putAppend(key, "", "Del")
+}
+
+func (ck *Clerk) Get(key string) (string, error) {
+	r, err := ck.doGet(key, false)
+	if err != nil {
+		return "", err
+	}
+	if len(r) == 1 {
+		rr := r[0]
+		v := ck.DateToValue(rr)
+		if v.DeadTime != 0 && time.UnixMilli(v.DeadTime).Before(time.Now()) {
+			return "", ErrNil
+		}
+		return v.Value, nil
+	}
+	return "", ErrNil
+}
+
+func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
+	rawValues, err := ck.doGet(key, true)
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+		return nil, err
+	}
+
+	values := make([]string, len(rawValues))
+
+	for i := range rawValues {
+		v := ck.DateToValue(rawValues[i])
+		if v.DeadTime != 0 && time.UnixMilli(v.DeadTime).Before(time.Now()) {
+			// just skip
+			continue
+		}
+		values = append(values, v.Value)
+	}
+	return values, nil
 }

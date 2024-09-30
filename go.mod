@@ -4,6 +4,8 @@ go 1.23.0
 
 require (
 	github.com/natefinch/lumberjack v2.0.0+incompatible
+	github.com/nosixtools/timewheel v1.3.0
+	github.com/rfyiamcool/go-timewheel v1.1.0
 	go.etcd.io/etcd/client/v3 v3.5.16
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.66.2
