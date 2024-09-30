@@ -18,6 +18,8 @@
 - 动态集群
 - 租约机制，从节点读
 - batch api
+- 心跳保活机制，及时发现失联服务
+- CPU 占用率优化，将算法中的一些轮询机制改为通知机制
 
 性能：
 
@@ -42,6 +44,16 @@ go test -benchmem -run=^$ -bench ^Benchmark github.com/Oncelane/laneEtcd/src/cmd
 > 而本项目未实现键值对的历史版本，未能很好控制变量
 >
 > 且本项目的 CPU 占用率高于 Etcd 至少两倍以上，是比较大的缺陷
+
+# 测试截图
+
+laneEtcd
+
+![laneEtcd](./docs/laneEtcd.png)
+
+Etcd
+
+![laneEtcd](./docs/Etcd.png)
 
 # 运行服务端
 
