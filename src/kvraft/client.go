@@ -13,6 +13,8 @@ import (
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 )
 
+var pipeLimit int = 1024 * 4000
+
 type Clerk struct {
 	servers []*KVClient
 	// You will have to modify this struct.
@@ -146,7 +148,11 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 			if len(reply.Value) == 0 {
 				return nil, ErrNil
 			}
-			return reply.Value, nil
+			strSlice := make([]string, len(reply.Value))
+			for i, s := range reply.Value {
+				strSlice[i] = string(s)
+			}
+			return strSlice, nil
 		case ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
 			return nil, ErrNil
@@ -183,7 +189,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
-func (ck *Clerk) putAppend(key string, value string, op string) error {
+func (ck *Clerk) write(key string, value []byte, op int32) error {
 	// You will have to modify this function.
 
 	ck.mu.Lock()
@@ -232,7 +238,7 @@ func (ck *Clerk) putAppend(key string, value string, op string) error {
 
 		lastSendLocalId = ck.nextSendLocalId
 		if err != nil {
-			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[lost] args[%v]", ck.clientId, args)
+			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[lost] args[%v] err:", ck.clientId, args, err)
 			//对面失联，那就换下一个继续发
 			ck.changeNextSendId()
 			continue
@@ -273,7 +279,7 @@ func (ck *Clerk) changeNextSendId() {
 	ck.nextSendLocalId = (ck.nextSendLocalId + 1) % len(ck.servers)
 }
 
-func (ck *Clerk) ValueToData(key string, value string, TTL time.Duration) (data string) {
+func ValueToData(value string, TTL time.Duration) (data []byte) {
 	v := ValueType{
 		Value:    value,
 		DeadTime: 0,
@@ -285,12 +291,13 @@ func (ck *Clerk) ValueToData(key string, value string, TTL time.Duration) (data 
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
-	return string(d)
+	return d
 }
 
-func (ck *Clerk) DateToValue(data string) ValueType {
+func DateToValue(data []byte) ValueType {
 	v := ValueType{}
-	err := json.Unmarshal([]byte(data), &v)
+	// laneLog.Logger.Debugln("raw json:", string(data))
+	err := json.Unmarshal(data, &v)
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
@@ -298,16 +305,27 @@ func (ck *Clerk) DateToValue(data string) ValueType {
 }
 
 func (ck *Clerk) Put(key string, value string, TTL time.Duration) error {
-	d := ck.ValueToData(key, value, TTL)
-	return ck.putAppend(key, string(d), "Put")
+	d := ValueToData(value, TTL)
+	return ck.write(key, d, int32(pb.OpType_PutT))
 }
 func (ck *Clerk) Append(key string, value string, TTL time.Duration) error {
-	d := ck.ValueToData(key, value, TTL)
-	return ck.putAppend(key, string(d), "Append")
+	d := ValueToData(value, TTL)
+	return ck.write(key, d, int32(pb.OpType_AppendT))
 }
 
 func (ck *Clerk) Delete(key string) error {
-	return ck.putAppend(key, "", "Del")
+	return ck.write(key, nil, int32(pb.OpType_DelT))
+}
+
+func (ck *Clerk) batchWrite(p *Pipe) error {
+
+	return ck.write("", p.Marshal(), int32(pb.OpType_BatchT))
+}
+
+func (ck *Clerk) Pipeline() *Pipe {
+	return &Pipe{
+		ck: ck,
+	}
 }
 
 func (ck *Clerk) Get(key string) (string, error) {
@@ -317,7 +335,7 @@ func (ck *Clerk) Get(key string) (string, error) {
 	}
 	if len(r) == 1 {
 		rr := r[0]
-		v := ck.DateToValue(rr)
+		v := DateToValue([]byte(rr))
 		if v.DeadTime != 0 && time.UnixMilli(v.DeadTime).Before(time.Now()) {
 			return "", ErrNil
 		}
@@ -340,7 +358,7 @@ func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
 	)
 
 	for i := range rawValues {
-		validMarshal[i] = ck.DateToValue(rawValues[i])
+		validMarshal[i] = DateToValue([]byte(rawValues[i]))
 		if validMarshal[i].DeadTime != 0 && time.UnixMilli(validMarshal[i].DeadTime).Before(time.Now()) {
 			// just skip
 			continue

@@ -106,4 +106,15 @@ func TestNaming(t *testing.T) {
 	for _, n := range nodes {
 		laneLog.Logger.Infof("get nodes:%+v", n)
 	}
+	time.Sleep(time.Second)
+	nodes, err = GetNode(ck, "comet")
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	if len(nodes) == 0 {
+		laneLog.Logger.Infoln("no node")
+	}
+	for _, n := range nodes {
+		laneLog.Logger.Infof("get nodes:%+v", n)
+	}
 }

@@ -51,15 +51,22 @@ service raft {
   rpc AppendEntries(AppendEntriesArgs) returns (AppendEntriesReply);
   rpc RequestVote(RequestVoteArgs) returns (RequestVoteReply);
 }
-
+enum OpType {
+  GetT = 0;
+  PutT = 1;
+  AppendT = 2;
+  DelT = 3;
+  BatchT = 4;
+  EmptyT = 5; // indicate a empty log only use to update leader commitIndex
+}
 // Put or Append
 message PutAppendArgs {
   string Key = 1;
-  string Value = 2;
-  string Op = 3; // "Put" or "Append"
-                 // You'll have to add definitions here.
-                 // Field names must start with capital
-                 // letters, otherwise RPC will break.
+  bytes Value = 2;
+  int32 Op = 3; // "Put" or "Append"
+                // You'll have to add definitions here.
+                // Field names must start with capital
+                // letters, otherwise RPC will break.
   int64 ClientId = 4;
   int32 LatestOffset = 5;
 }
@@ -81,7 +88,7 @@ message GetArgs {
 message GetReply {
   string Err = 1;
   int32 LeaderId = 2;
-  repeated string Value = 3;
+  repeated bytes Value = 3;
   int32 ServerId = 4;
 }
 

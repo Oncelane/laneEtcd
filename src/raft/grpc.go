@@ -23,6 +23,7 @@ func NewRaftClient(conf laneConfig.RaftEnd) *RaftEnd {
 	client := pb.NewRaftClient(conn)
 	ret := &RaftEnd{
 		conn: client,
+		conf: conf,
 	}
 	return ret
 }

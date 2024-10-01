@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"encoding/json"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -54,7 +53,6 @@ type duplicateType struct {
 
 func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply, err error) {
 	reply = new(pb.GetReply)
-	reply.Value = []string{"i should not with ok symble"}
 	reply.Err = ErrWrongLeader
 	reply.LeaderId = int32(kv.rf.GetleaderId())
 	reply.ServerId = int32(kv.me)
@@ -71,13 +69,15 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	if !kv.rf.IisBack {
 		laneLog.Logger.Infof("server [%d] [recovering] reject a [Get]🔰 args[%v]", kv.me, args)
 		reply.Err = ErrWaitForRecover
-		data, err := json.Marshal(raft.Op{
-			OpType: raft.EmptyT,
+		b := new(bytes.Buffer)
+		e := gob.NewEncoder(b)
+		e.Encode(raft.Op{
+			OpType: int32(pb.OpType_EmptyT),
 		})
 		if err != nil {
 			laneLog.Logger.Fatalln(err)
 		}
-		kv.rf.Start(data)
+		kv.rf.Start(b.Bytes())
 		return reply, nil
 	}
 
@@ -108,7 +108,11 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	if len(value) != 0 {
 		if kv.lastAppliedIndex >= readLastIndex && kv.rf.GetLeader() && term == kv.rf.GetTerm() {
 			reply.Err = OK
-			reply.Value = value
+			byteSlice := make([][]byte, len(value))
+			for i, s := range value {
+				byteSlice[i] = []byte(s)
+			}
+			reply.Value = byteSlice
 			// laneLog.Logger.Infof("server [%d] [Get] [ok] lastAppliedIndex[%d] readLastIndex[%d]", kv.me, kv.lastAppliedIndex, readLastIndex)
 			// laneLog.Logger.Infof("server [%d] [Get] [Ok] the get args[%v] reply[%v]", kv.me, args, reply)
 		} else {
@@ -147,56 +151,45 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 		ClientId: args.ClientId,
 		Offset:   args.LatestOffset,
 		Key:      args.Key,
-		Value:    args.Value,
-	}
-
-	switch args.Op {
-	case "Put":
-		op.OpType = raft.PutT
-	case "Append":
-		op.OpType = raft.AppendT
-	case "Del":
-		op.OpType = raft.DelT
-	default:
-		laneLog.Logger.Fatalf("unreconize put append args.Op:%s", args.Op)
+		Value:    string(args.Value),
+		OpType:   args.Op,
 	}
 
 	//start前需要查看本地log缓存是否有seq
 
 	//这里通过缓存提交，一方面提高了kvserver应对网络错误的回复速度，另一方面进行了第一层的重复检测
 	//但是注意可能同时有两个相同的getDuplicateMap通过这里
-	//laneLog.Logger.Debugln("pass", kv.me)
 	kv.mu.Lock()
 	if args.LatestOffset < kv.duplicateMap[args.ClientId].Offset {
 		kv.mu.Unlock()
-		//laneLog.Logger.Debugln("pass", kv.me)
 		return
 	}
 	if args.LatestOffset == kv.duplicateMap[args.ClientId].Offset {
 		reply.Err = OK
 		kv.mu.Unlock()
-		//laneLog.Logger.Debugln("pass", kv.me)
+
 		return
 	}
 	kv.mu.Unlock()
 
 	//没有在本地缓存发现过seq
 	//向raft提交操作
-	//laneLog.Logger.Debugln("pass", kv.me)
-	data, err := json.Marshal(op)
-	//laneLog.Logger.Debugln("pass", kv.me)
+	// laneLog.Logger.Debugln("raw data:", []byte(op.Value))
+	// data, err := json.Marshal(op)
+	b := new(bytes.Buffer)
+	e := gob.NewEncoder(b)
+	err = e.Encode(op)
 	if err != nil {
-		panic(err)
+		laneLog.Logger.Fatalln(err)
 	}
-	//laneLog.Logger.Debugln("pass", kv.me)
-	index, term, isleader := kv.rf.Start(data)
-	//laneLog.Logger.Debugln("pass", kv.me)
+
+	index, term, isleader := kv.rf.Start(b.Bytes())
+
 	if !isleader {
 		return
 	}
-	//laneLog.Logger.Debugln("pass", kv.me)
+
 	kv.rf.SendAppendEntriesToAll()
-	//laneLog.Logger.Debugln("pass", kv.me)
 	// laneLog.Logger.Infof("server [%d] submit to raft key[%v] value[%v]", kv.me, op.Key, op.Value)
 	//提交后阻塞等待
 	//等待applyCh拿到对应的index，比对seq是否正确
@@ -228,7 +221,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 			} //term匹配，说明本次提交一定是有效的
 
 			reply.Err = OK
-			laneLog.Logger.Infof("server [%d] [PutAppend] success args.index[%d], args[%v] reply[%v]", kv.me, index, *args, *reply)
+			laneLog.Logger.Infof("server [%d] [PutAppend] success args.index[%d]", kv.me, index)
 			kv.mu.Unlock()
 			if _, isleader := kv.rf.GetState(); !isleader {
 				reply.Err = ErrWrongLeader
@@ -277,17 +270,20 @@ func (kv *KVServer) HandleApplych() {
 
 func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 	op_type := new(raft.Op)
-	err := json.Unmarshal(raft_type.Command, op_type)
+	b := bytes.NewBuffer(raft_type.Command)
+	d := gob.NewDecoder(b)
+	err := d.Decode(op_type)
+	// err := json.Unmarshal(raft_type.Command, op_type)
 	if err != nil {
-		laneLog.Logger.Fatalf("raft applyArgs.command -> Op 失败,raft_type.Command = %v", raft_type.Command)
+		laneLog.Logger.Fatalf("raft applyArgs.command -> Op 失败,raft_type.Command = %v", raft_type.Command, err)
 	}
 
-	if op_type.OpType == raft.EmptyT {
+	if op_type.OpType == int32(pb.OpType_EmptyT) {
 		return
 	}
 
 	switch op_type.OpType {
-	case raft.PutT:
+	case int32(pb.OpType_PutT):
 		//更新状态机
 		//有可能有多个start重复执行，所以这一步要检验重复
 		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
@@ -301,7 +297,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		kv.kvMap.Put(op_type.Key, op_type.Value)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s,%s] [map] -> %v", kv.me, op_type.Key, op_type.Value, kv.kvMap)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s : %s] ", kv.me, op_type.Key, op_type.Value)
-	case raft.AppendT:
+	case int32(pb.OpType_AppendT):
 		//更新状态机
 		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
 			laneLog.Logger.Infof("⛔server [%d] [Append] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
@@ -314,7 +310,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		ori, _ := kv.kvMap.Get(op_type.Key)
 		kv.kvMap.Put(op_type.Key, ori+op_type.Value)
 		laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
-	case raft.DelT:
+	case int32(pb.OpType_DelT):
 		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
 			laneLog.Logger.Infof("⛔server [%d] [Del] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
 			return
@@ -324,8 +320,29 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 			Reply:  "",
 		}
 		kv.kvMap.Del(op_type.Key)
-	case raft.GetT:
+	case int32(pb.OpType_GetT):
 		laneLog.Logger.Fatalf("日志中不应该出现getType")
+	case int32(pb.OpType_BatchT):
+		var ops []raft.Op
+		b := bytes.NewBuffer([]byte(op_type.Value))
+		d := gob.NewDecoder(b)
+		err := d.Decode(&ops)
+		if err != nil {
+			laneLog.Logger.Fatalln("raw data:", []byte(op_type.Value), err)
+		}
+		for _, op := range ops {
+			switch op.OpType {
+			case int32(pb.OpType_PutT):
+				kv.kvMap.Put(op.Key, op.Value)
+			case int32(pb.OpType_AppendT):
+				ori, _ := kv.kvMap.Get(op.Key)
+				kv.kvMap.Put(op.Key, ori+op.Value)
+			case int32(pb.OpType_DelT):
+				kv.kvMap.Del(op.Key)
+			}
+			// laneLog.Logger.Infof("exec batch op: %+v", op)
+		}
+
 	default:
 		laneLog.Logger.Fatalf("日志中出现未知optype = [%d]", op_type.OpType)
 	}

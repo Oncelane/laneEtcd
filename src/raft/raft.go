@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"encoding/json"
 	"math/rand"
 	"net"
 	"sort"
@@ -868,11 +867,17 @@ func (rf *Raft) electionLoop() {
 					}
 					laneLog.Logger.Infof("❗ Term[%d] [%d]candidate -> leader", rf.currentTerm, rf.me)
 					rf.lastSendHeartbeatTime = time.Now().Add(-time.Millisecond * 2 * HeartBeatInterval)
-					data, _ := json.Marshal(Op{
-						OpType: EmptyT,
+					// data, _ := json.Marshal(Op{
+					// 	OpType: int32(pb.OpType_EmptyT),
+					// })
+					b := new(bytes.Buffer)
+					e := gob.NewEncoder(b)
+					e.Encode(Op{
+						OpType: int32(pb.OpType_EmptyT),
 					})
+
 					rf.mu.Unlock()
-					rf.Start(data)
+					rf.Start(b.Bytes())
 					rf.mu.Lock()
 					return
 				}
