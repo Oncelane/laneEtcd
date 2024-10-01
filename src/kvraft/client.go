@@ -333,15 +333,34 @@ func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
 		return nil, err
 	}
 
-	values := make([]string, len(rawValues))
+	var (
+		validIndex   = make([]bool, len(rawValues))
+		validMarshal = make([]ValueType, len(rawValues))
+		validCount   = 0
+	)
 
 	for i := range rawValues {
-		v := ck.DateToValue(rawValues[i])
-		if v.DeadTime != 0 && time.UnixMilli(v.DeadTime).Before(time.Now()) {
+		validMarshal[i] = ck.DateToValue(rawValues[i])
+		if validMarshal[i].DeadTime != 0 && time.UnixMilli(validMarshal[i].DeadTime).Before(time.Now()) {
 			// just skip
 			continue
 		}
-		values = append(values, v.Value)
+		validIndex[i] = true
+		validCount++
+	}
+	if validCount == 0 {
+		return nil, nil
+	}
+
+	var (
+		values = make([]string, validCount)
+		index  = 0
+	)
+	for i, valie := range validIndex {
+		if valie {
+			values[index] = validMarshal[i].Value
+			index++
+		}
 	}
 	return values, nil
 }
