@@ -21,10 +21,10 @@ func TestBatchApi(t *testing.T) {
 	laneLog.Logger.Infoln("batch 1000 spand time:", time.Since(start))
 }
 
-func BenchmarkSingleApi(t *testing.B) {
-	start := time.Now()
-	for i := range t.N {
-		ck.Put("key"+strconv.Itoa(i), strconv.Itoa(i), 0)
-	}
-	laneLog.Logger.Infof("single %f spand time:%v", t.N, time.Since(start))
-}
+// func BenchmarkSingleApi(t *testing.B) {
+// 	start := time.Now()
+// 	for i := range t.N {
+// 		ck.Put("key"+strconv.Itoa(i), strconv.Itoa(i), 0)
+// 	}
+// 	laneLog.Logger.Infof("single %f spand time:%v", t.N, time.Since(start))
+// }
