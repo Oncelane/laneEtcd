@@ -8,6 +8,7 @@ type Op struct {
 	OpType   int32 //请求/操作类型
 	Key      string
 	Value    string
+	OriValue string
 }
 
 func (o *Op) Size() int {

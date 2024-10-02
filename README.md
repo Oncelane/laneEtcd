@@ -7,11 +7,11 @@
 - 集群部署
 - snapshot 持久化，崩溃恢复
 - readIndex，读请求不需要记录日志
-
-特性:
-
 - 压缩前缀树存储
 - 支持前缀范围查询
+- TTL-key：键值对支持过期时间
+- Batch-Api：类似 redis 的 pipeline，将多次网络请求合并为一次
+- MetaTags
 
 暂未实现：
 
@@ -28,6 +28,9 @@
 go test -benchmem -run=^$ -bench ^Benchmark github.com/Oncelane/laneEtcd/src/cmd/client -benchtime=10s
 ```
 
+压测环境一:
+CPU: i7-10750H CPU @ 2.60GHz
+
 | 压测项目      | laneEtcd   | Etcd       | 耗时与 Etcd 相比 |
 | ------------- | ---------- | ---------- | ---------------- |
 | Get           | 0.76 ms/op | 0.61 ms/op | +24.5%           |
@@ -35,25 +38,42 @@ go test -benchmem -run=^$ -bench ^Benchmark github.com/Oncelane/laneEtcd/src/cmd
 | Put           | 1.64 ms/op | 2.28 ms/op | -28.1%           |
 | Delete        | 1.68 ms/op | 2.20 ms/op | -23.6%           |
 
-读写性能均与 Etcd 较为持平，写性能略胜一筹
+压测环境二:
+CPU: AMD Ryzen 5 5600H with Radeon Graphics
+
+| 压测项目      | laneEtcd   | Etcd       | 耗时与 Etcd 相比 |
+| ------------- | ---------- | ---------- | ---------------- |
+| Get           | 0.84 ms/op | 0.81 ms/op | +3.7%            |
+| GetWithPrefix | 0.87 ms/op | 0.81 ms/op | +7.4%            |
+| Put           | 1.85 ms/op | 5.37 ms/op | -65.5%           |
+| Delete        | 1.89 ms/op | 5.28 ms/op | -64.2%           |
+
+从压测数据可以看到 laneEtcd 读写性能均与 Etcd 较为持平，在写性能上略胜一筹
+
+尤其是在较低配置的笔记本上，Etcd 性能下降非常明显，而 laneEtcd 性能只有小小的下降。
 
 > 此压测性能仅作当前阶段参考，并不意味着本项目性能真的超越 Etcd
 >
-> etcd 为了支持事务，保存的数据有版本号，可以指定版本读取历史数据（如果不压缩清除历史版本的数据），如果不指定，默认读取最大版本的数据
+> etcd 3.0 为了支持事务，保存的数据有版本号，可以指定版本读取历史数据（如果不压缩清除历史版本的数据），如果不指定，默认读取最大版本的数据，且因为需要保存的数据量增加，从内存存储改成了磁盘存储，使用了 BoltDB 数据库
 >
-> 而本项目未实现键值对的历史版本，未能很好控制变量
->
-> 且本项目的 CPU 占用率高于 Etcd 至少两倍以上，是比较大的缺陷
+> 而本项目仍然使用内存存储且只通过 CAS 支持简单的事务。
 
 # 测试截图
 
 laneEtcd
 
-![laneEtcd](./docs/laneEtcd.png)
+![1](./docs/laneEtcd.png)
 
 Etcd
 
-![laneEtcd](./docs/Etcd.png)
+![2](./docs/Etcd.png)
+
+配置较低的笔记本上的压测源数据：
+
+![3](./docs/最新压测结果之家里笔记本神秘莫测结果.png)
+
+> laneEtcd 的性能变化不大，但是 Etcd 的性能相比在另一台高配一点的笔记本上的数据就有些奇怪，推测是主动限制了 cpu 占用率
+> 但是使用 htop 命令的时候，laneEtcd 和 Etcd 两者的 cpu 占用率差距很小，12 核均在 20~30%波动，因此暂时将此数据中 Etcd 的部分搁置，降低参考意义。
 
 # 运行服务端
 

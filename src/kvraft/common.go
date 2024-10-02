@@ -18,8 +18,11 @@ const (
 	ErrWaitForRecover = "Wait"
 )
 
-var ErrNil error = errors.New("etcd has no key")
-var ErrFaild error = errors.New("etcd has faild")
+var (
+	ErrNil      error = errors.New("etcd: nil key")
+	ErrFaild    error = errors.New("etcd: faild to connect")
+	ErrCASFaild error = errors.New("etcd: CAS not equal")
+)
 
 type Err string
 
@@ -56,6 +59,7 @@ type GetReply struct {
 }
 
 type ValueType struct {
+	Origin   string
 	Value    string
 	DeadTime int64
 }

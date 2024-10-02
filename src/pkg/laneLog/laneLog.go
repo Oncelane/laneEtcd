@@ -14,7 +14,7 @@ import (
 var Logger *zap.SugaredLogger
 
 func init() {
-	InitLogger("log", false, false, false)
+	InitLogger("log", true, false, false)
 }
 
 func InitLogger(name string, enableConsole, enableMiliSecondTime, enableNanoTime bool) {

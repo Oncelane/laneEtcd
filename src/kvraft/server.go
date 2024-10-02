@@ -44,6 +44,8 @@ type KVServer struct {
 	duplicateMap map[int64]duplicateType
 
 	grpc *grpc.Server
+
+	lastIndexCh chan int
 }
 
 type duplicateType struct {
@@ -88,12 +90,12 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 		reply.Err = ErrWrongLeader
 		return
 	}
+
 	//return false ,但是进入下面代码段的时候，发现自己又不是leader了，捏麻麻的
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 	//跟raft层之间的同步问题，raft刚当选leader的时候，还没有
 
-	//直接返回
 	var value []string
 	if args.WithPrefix {
 		value = kv.kvMap.GetWithPrefix(args.Key)
@@ -105,26 +107,27 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 		}
 	}
 
-	if len(value) != 0 {
-		if kv.lastAppliedIndex >= readLastIndex && kv.rf.GetLeader() && term == kv.rf.GetTerm() {
-			reply.Err = OK
-			byteSlice := make([][]byte, len(value))
-			for i, s := range value {
-				byteSlice[i] = []byte(s)
-			}
-			reply.Value = byteSlice
-			// laneLog.Logger.Infof("server [%d] [Get] [ok] lastAppliedIndex[%d] readLastIndex[%d]", kv.me, kv.lastAppliedIndex, readLastIndex)
-			// laneLog.Logger.Infof("server [%d] [Get] [Ok] the get args[%v] reply[%v]", kv.me, args, reply)
-		} else {
-			reply.Err = ErrWaitForRecover
-			// laneLog.Logger.Infof("server [%d] [Get] [ErrWaitForRecover] kv.lastAppliedIndex < readLastIndex args[%v] reply[%v]", kv.me, *args, *reply)
+	if kv.lastAppliedIndex >= readLastIndex && kv.rf.GetLeader() && term == kv.rf.GetTerm() {
+		if len(value) == 0 {
+			reply.Err = ErrNoKey
+			return
 		}
-
+		reply.Err = OK
+		byteSlice := make([][]byte, len(value))
+		for i, s := range value {
+			byteSlice[i] = []byte(s)
+		}
+		reply.Value = byteSlice
+		// laneLog.Logger.Infof("server [%d] [Get] [ok] lastAppliedIndex[%d] readLastIndex[%d]", kv.me, kv.lastAppliedIndex, readLastIndex)
+		// laneLog.Logger.Infof("server [%d] [Get] [Ok] the get args[%v] reply[%v]", kv.me, args, reply)
 	} else {
-		reply.Err = ErrNoKey
-		// laneLog.Logger.Infof("server [%d] [Get] [NoKey] the get args[%v] reply[%v]", kv.me, args, reply)
-		// laneLog.Logger.Infof("server [%d] [map] -> %v", kv.me, kv.kvMap)
+		reply.Err = ErrWaitForRecover
+		// laneLog.Logger.Infof("server [%d] [Get] [ErrWaitForRecover] kv.lastAppliedIndex < readLastIndex args[%v] reply[%v]", kv.me, *args, *reply)
 	}
+
+	// laneLog.Logger.Infof("server [%d] [Get] [NoKey] the get args[%v] reply[%v]", kv.me, args, reply)
+	// laneLog.Logger.Infof("server [%d] [map] -> %v", kv.me, kv.kvMap)
+
 	return reply, nil
 }
 
@@ -230,12 +233,18 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 			return
 		}
 		kv.mu.Unlock()
-		//超过2s没等到applych，那就返回wrong
+		select {
+		case <-kv.lastIndexCh:
+			// 阻塞等待
+		case <-time.After(time.Millisecond * 500):
+			laneLog.Logger.Infof("server [%d] [PutAppend] fail [time out] args.index[%d]", kv.me, index)
+			return
+		}
+		// 因为time.After可能会在超时前多次被重置，所以还需要在外层额外做保证
 		if time.Since(startWait).Milliseconds() > 500 {
 			laneLog.Logger.Infof("server [%d] [PutAppend] fail [time out] args.index[%d]", kv.me, index)
 			return
 		}
-		time.Sleep(time.Microsecond * 100)
 	}
 	return reply, nil
 }
@@ -255,6 +264,14 @@ func (kv *KVServer) HandleApplych() {
 				kv.HandleApplychCommand(raft_type)
 				kv.checkifNeedSnapshot(raft_type.CommandIndex)
 				kv.lastAppliedIndex = raft_type.CommandIndex
+				for {
+					select {
+					case kv.lastIndexCh <- raft_type.CommandIndex:
+					default:
+						goto APPLYBREAK
+					}
+				}
+			APPLYBREAK:
 				// laneLog.Logger.Debugln("pass", kv.me, "  raft_type.CommandIndex=", raft_type.CommandIndex)
 			} else if raft_type.SnapshotValid {
 				laneLog.Logger.Infof("📷 server [%d] receive raftSnapshotIndex[%d]", kv.me, raft_type.SnapshotIndex)
@@ -281,47 +298,42 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 	if op_type.OpType == int32(pb.OpType_EmptyT) {
 		return
 	}
-
+	if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
+		laneLog.Logger.Infof("⛔server [%d] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
+		return
+	}
+	kv.duplicateMap[op_type.ClientId] = duplicateType{
+		Offset: op_type.Offset,
+		Reply:  "",
+	}
 	switch op_type.OpType {
 	case int32(pb.OpType_PutT):
 		//更新状态机
 		//有可能有多个start重复执行，所以这一步要检验重复
-		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
-			laneLog.Logger.Infof("⛔server [%d] [Put] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
-			return
-		}
-		kv.duplicateMap[op_type.ClientId] = duplicateType{
-			Offset: op_type.Offset,
-			Reply:  "",
-		}
+
 		kv.kvMap.Put(op_type.Key, op_type.Value)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s,%s] [map] -> %v", kv.me, op_type.Key, op_type.Value, kv.kvMap)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s : %s] ", kv.me, op_type.Key, op_type.Value)
 	case int32(pb.OpType_AppendT):
-		//更新状态机
-		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
-			laneLog.Logger.Infof("⛔server [%d] [Append] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
-			return
-		}
-		kv.duplicateMap[op_type.ClientId] = duplicateType{
-			Offset: op_type.Offset,
-			Reply:  "",
-		}
+
 		ori, _ := kv.kvMap.Get(op_type.Key)
 		kv.kvMap.Put(op_type.Key, ori+op_type.Value)
-		laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
+		// laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
+
 	case int32(pb.OpType_DelT):
-		if op_type.Offset <= kv.duplicateMap[op_type.ClientId].Offset {
-			laneLog.Logger.Infof("⛔server [%d] [Del] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, op_type, kv.lastAppliedIndex, kv.kvMap)
+
+		kv.kvMap.Del(op_type.Key)
+
+	case int32(pb.OpType_CAST):
+		ori, _ := kv.kvMap.Get(op_type.Key)
+		if (ori) != op_type.OriValue {
 			return
 		}
-		kv.duplicateMap[op_type.ClientId] = duplicateType{
-			Offset: op_type.Offset,
-			Reply:  "",
-		}
-		kv.kvMap.Del(op_type.Key)
+
 	case int32(pb.OpType_GetT):
+
 		laneLog.Logger.Fatalf("日志中不应该出现getType")
+
 	case int32(pb.OpType_BatchT):
 		var ops []raft.Op
 		b := bytes.NewBuffer([]byte(op_type.Value))
@@ -358,7 +370,14 @@ func (kv *KVServer) HandleApplychSnapshot(raft_type raft.ApplyMsg) {
 	kv.readPersist(snapshot)
 	laneLog.Logger.Infof("server [%d] passive📷 lastAppliedIndex[%d] -> [%d]", kv.me, kv.lastAppliedIndex, raft_type.SnapshotIndex)
 	kv.lastAppliedIndex = raft_type.SnapshotIndex
-
+	for {
+		select {
+		case kv.lastIndexCh <- raft_type.CommandIndex:
+		default:
+			goto SNAPBREAK
+		}
+	}
+SNAPBREAK:
 }
 
 // 主动快照,每一个服务器都在自己log超标的时候启动快照
@@ -487,11 +506,7 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 	kv.lastIncludeIndex = 0
 	//state machine
 	kv.kvMap = trie.NewTrieX()
-
-	if err != nil {
-		laneLog.Logger.Fatalln("trieMap init error", err)
-		return nil
-	}
+	kv.lastIndexCh = make(chan int)
 
 	//log
 	kv.duplicateMap = make(map[int64]duplicateType)

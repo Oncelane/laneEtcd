@@ -57,7 +57,8 @@ enum OpType {
   AppendT = 2;
   DelT = 3;
   BatchT = 4;
-  EmptyT = 5; // indicate a empty log only use to update leader commitIndex
+  CAST = 5;
+  EmptyT = 6; // indicate a empty log only use to update leader commitIndex
 }
 // Put or Append
 message PutAppendArgs {

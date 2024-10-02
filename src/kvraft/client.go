@@ -291,6 +291,22 @@ func ValueToData(value string, TTL time.Duration) (data []byte) {
 	return d
 }
 
+func ValueToDataCAS(origin, value string, TTL time.Duration) (data []byte) {
+	v := ValueType{
+		Origin:   origin,
+		Value:    value,
+		DeadTime: 0,
+	}
+	if TTL != 0 {
+		v.DeadTime = time.Now().Add(TTL).UnixMilli()
+	}
+	d, err := json.Marshal(v)
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	return d
+}
+
 func DateToValue(data []byte) ValueType {
 	v := ValueType{}
 	// laneLog.Logger.Debugln("raw json:", string(data))
@@ -314,8 +330,19 @@ func (ck *Clerk) Delete(key string) error {
 	return ck.write(key, nil, int32(pb.OpType_DelT))
 }
 
-func (ck *Clerk) batchWrite(p *Pipe) error {
+func (ck *Clerk) CAS(key, origin, dest string, TTL time.Duration) (bool, error) {
+	d := ValueToDataCAS(origin, dest, TTL)
+	err := ck.write(key, d, int32(pb.OpType_CAST))
+	if err != nil {
+		if err == ErrCASFaild {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
 
+func (ck *Clerk) batchWrite(p *Pipe) error {
 	return ck.write("", p.Marshal(), int32(pb.OpType_BatchT))
 }
 
@@ -344,7 +371,7 @@ func (ck *Clerk) Get(key string) (string, error) {
 func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
 	rawValues, err := ck.doGet(key, true)
 	if err != nil {
-		laneLog.Logger.Fatalln(err)
+		// laneLog.Logger.Fatalln(err)
 		return nil, err
 	}
 
