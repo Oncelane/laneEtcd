@@ -10,4 +10,4 @@ rafts:
     - addr: 127.0.0.1
       port: :32302
 databasepath: "data2"
-maxraftstate: 102400
+maxraftstate: 100000

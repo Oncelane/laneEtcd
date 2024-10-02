@@ -86,7 +86,7 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 
-func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
+func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
@@ -148,11 +148,8 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([]string, error) {
 			if len(reply.Value) == 0 {
 				return nil, ErrNil
 			}
-			strSlice := make([]string, len(reply.Value))
-			for i, s := range reply.Value {
-				strSlice[i] = string(s)
-			}
-			return strSlice, nil
+
+			return reply.Value, nil
 		case ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
 			return nil, ErrNil
@@ -335,7 +332,7 @@ func (ck *Clerk) Get(key string) (string, error) {
 	}
 	if len(r) == 1 {
 		rr := r[0]
-		v := DateToValue([]byte(rr))
+		v := DateToValue(rr)
 		if v.DeadTime != 0 && time.UnixMilli(v.DeadTime).Before(time.Now()) {
 			return "", ErrNil
 		}
