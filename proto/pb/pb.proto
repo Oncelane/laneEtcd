@@ -73,7 +73,7 @@ message PutAppendArgs {
 }
 
 message PutAppendReply {
-  string Err = 1;
+  int32 Err = 1;
   int32 LeaderId = 2;
   int32 ServerId = 3;
 }
@@ -87,7 +87,7 @@ message GetArgs {
 }
 
 message GetReply {
-  string Err = 1;
+  int32 Err = 1;
   int32 LeaderId = 2;
   repeated bytes Value = 3;
   int32 ServerId = 4;

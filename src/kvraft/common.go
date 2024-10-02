@@ -12,16 +12,17 @@ import "errors"
 // }
 
 const (
-	OK                = "OK"
-	ErrNoKey          = "ErrNoKey"
-	ErrWrongLeader    = "ErrWrongLeader"
-	ErrWaitForRecover = "Wait"
+	ErrOK = iota
+	ErrNoKey
+	ErrCasFaildInt
+	ErrWrongLeader
+	ErrWaitForRecover
 )
 
 var (
+	ErrCASFaild error = errors.New("etcd: cas op faild")
 	ErrNil      error = errors.New("etcd: nil key")
 	ErrFaild    error = errors.New("etcd: faild to connect")
-	ErrCASFaild error = errors.New("etcd: CAS not equal")
 )
 
 type Err string

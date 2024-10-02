@@ -1,6 +1,8 @@
 package raft
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 type Op struct {
 	ClientId int64 //客户端标识，用于应对重复请求
@@ -8,7 +10,8 @@ type Op struct {
 	OpType   int32 //请求/操作类型
 	Key      string
 	Value    string
-	OriValue string
+	// OriValue string
+	// DeadTIme int64
 }
 
 func (o *Op) Size() int {

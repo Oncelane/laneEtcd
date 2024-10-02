@@ -18,9 +18,12 @@ func TestClient(t *testing.T) {
 			lastIndex := 0
 			defer wait.Done()
 			for {
-				if lastIndex >= targetIndex {
+				if lastIndex == targetIndex {
 					laneLog.Logger.Infof("id:%d success", id)
 					return
+				}
+				if lastIndex > targetIndex {
+					laneLog.Logger.Infof("id:%d faild?", id)
 				}
 				select {
 				case index := <-ch:

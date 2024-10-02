@@ -46,11 +46,14 @@ type KVServer struct {
 	grpc *grpc.Server
 
 	lastIndexCh chan int
+
+	casMapResult map[int64]bool
 }
 
 type duplicateType struct {
 	Offset int32
-	Reply  string
+	// Reply     string
+	CASResult bool
 }
 
 func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply, err error) {
@@ -112,7 +115,7 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 			reply.Err = ErrNoKey
 			return
 		}
-		reply.Err = OK
+		reply.Err = ErrOK
 		byteSlice := make([][]byte, len(value))
 		for i, s := range value {
 			byteSlice[i] = []byte(s)
@@ -149,13 +152,16 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 		// laneLog.Logger.Infof("server [%d] [info] i am not leader ,leader is [%d]", kv.me, reply.LeaderId)
 		return
 	}
+	// v := DateToValue(args.Value)
 
 	op := raft.Op{
 		ClientId: args.ClientId,
 		Offset:   args.LatestOffset,
 		Key:      args.Key,
 		Value:    string(args.Value),
-		OpType:   args.Op,
+		// OriValue: v.Origin,
+		// DeadTIme: v.DeadTime,
+		OpType: args.Op,
 	}
 
 	//start前需要查看本地log缓存是否有seq
@@ -165,12 +171,21 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 	kv.mu.Lock()
 	if args.LatestOffset < kv.duplicateMap[args.ClientId].Offset {
 		kv.mu.Unlock()
+		//laneLog.Logger.Debugln("pass", kv.me)
 		return
 	}
 	if args.LatestOffset == kv.duplicateMap[args.ClientId].Offset {
-		reply.Err = OK
+		if op.OpType != int32(pb.OpType_CAST) {
+			reply.Err = ErrOK
+		} else {
+			if kv.duplicateMap[args.ClientId].CASResult {
+				reply.Err = ErrOK
+			} else {
+				reply.Err = ErrCasFaildInt
+			}
+		}
+		//laneLog.Logger.Debugln("pass", kv.me)
 		kv.mu.Unlock()
-
 		return
 	}
 	kv.mu.Unlock()
@@ -204,14 +219,22 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 		if index <= kv.lastAppliedIndex {
 			//双重防重复
 			if args.LatestOffset < kv.duplicateMap[args.ClientId].Offset {
-				kv.mu.Unlock()
 				//laneLog.Logger.Debugln("pass", kv.me)
+				kv.mu.Unlock()
 				return
 			}
 			if args.LatestOffset == kv.duplicateMap[args.ClientId].Offset {
-				reply.Err = OK
-				kv.mu.Unlock()
+				if op.OpType != int32(pb.OpType_CAST) {
+					reply.Err = ErrOK
+				} else {
+					if kv.duplicateMap[args.ClientId].CASResult {
+						reply.Err = ErrOK
+					} else {
+						reply.Err = ErrCasFaildInt
+					}
+				}
 				//laneLog.Logger.Debugln("pass", kv.me)
+				kv.mu.Unlock()
 				return
 			}
 
@@ -223,7 +246,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 				return
 			} //term匹配，说明本次提交一定是有效的
 
-			reply.Err = OK
+			reply.Err = ErrOK
 			laneLog.Logger.Infof("server [%d] [PutAppend] success args.index[%d]", kv.me, index)
 			kv.mu.Unlock()
 			if _, isleader := kv.rf.GetState(); !isleader {
@@ -304,7 +327,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 	}
 	kv.duplicateMap[op_type.ClientId] = duplicateType{
 		Offset: op_type.Offset,
-		Reply:  "",
+		// Reply:  "",
 	}
 	switch op_type.OpType {
 	case int32(pb.OpType_PutT):
@@ -327,7 +350,14 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 	case int32(pb.OpType_CAST):
 		ori, _ := kv.kvMap.Get(op_type.Key)
 		if (ori) != op_type.OriValue {
-			return
+			kv.casMapResult[op_type.ClientId+int64(op_type.Offset)] = false
+		} else {
+			kv.kvMap.Put(op_type.Key, op_type.Value)
+			kv.casMapResult[op_type.ClientId+int64(op_type.Offset)] = true
+			kv.duplicateMap[op_type.ClientId] = duplicateType{
+				Offset:    op_type.Offset,
+				CASResult: true,
+			}
 		}
 
 	case int32(pb.OpType_GetT):
@@ -492,24 +522,22 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 	gob.Register(raft.Op{})
 	gob.Register(map[string]string{})
 	gob.Register(map[int64]duplicateType{})
-	kv := new(KVServer)
-	kv.me = me
-	kv.maxraftstate = maxraftstate
-	kv.persister = persister
-	// You may need initialization code here.
+	kv := &KVServer{
+		me:               me,
+		maxraftstate:     maxraftstate,
+		persister:        persister,
+		applyCh:          make(chan raft.ApplyMsg),
+		lastAppliedIndex: 0,
+		lastIncludeIndex: 0,
+		kvMap:            trie.NewTrieX(),
+		lastIndexCh:      make(chan int),
+		casMapResult:     make(map[int64]bool),
+		duplicateMap:     make(map[int64]duplicateType),
+	}
 
-	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(me, persister, kv.applyCh, conf.Rafts)
 
-	// You may need initialization code here.
-	kv.lastAppliedIndex = 0
-	kv.lastIncludeIndex = 0
 	//state machine
-	kv.kvMap = trie.NewTrieX()
-	kv.lastIndexCh = make(chan int)
-
-	//log
-	kv.duplicateMap = make(map[int64]duplicateType)
 
 	kv.readPersist(persister.ReadSnapshot())
 	go kv.HandleApplych()

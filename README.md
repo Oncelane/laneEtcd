@@ -10,16 +10,16 @@
 - 压缩前缀树存储
 - 支持前缀范围查询
 - TTL-key：键值对支持过期时间
-- Batch-Api：类似 redis 的 pipeline，将多次网络请求合并为一次
-- MetaTags
+- Batch-Api：pipeline，将多次网络请求合并为一次
+- MetaTags：元标签，用于版本控制，流量染色，负载均衡
+- CPU 占用率优化，将算法中的一些轮询机制改为通知机制
 
 暂未实现：
 
 - 动态集群
 - 租约机制，从节点读
-- batch api
 - 心跳保活机制，及时发现失联服务
-- CPU 占用率优化，将算法中的一些轮询机制改为通知机制
+- duplicateMap 内存占用问题，即 clientId 租期机制
 
 性能：
 

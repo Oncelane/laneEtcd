@@ -142,7 +142,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 		ck.sToc[reply.ServerId] = ck.nextSendLocalId
 
 		switch reply.Err {
-		case OK:
+		case ErrOK:
 			ck.LatestOffset++
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
 			if len(reply.Value) == 0 {
@@ -152,6 +152,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 			return reply.Value, nil
 		case ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
+			ck.LatestOffset++
 			return nil, ErrNil
 		case ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
@@ -244,12 +245,17 @@ func (ck *Clerk) write(key string, value []byte, op int32) error {
 		ck.sToc[reply.ServerId] = ck.nextSendLocalId
 
 		switch reply.Err {
-		case OK:
+		case ErrOK:
 			ck.LatestOffset++
-			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[OK] args[%v] reply[%v]", ck.clientId, args, reply)
+			// laneLog.Logger.Infof("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
 			return nil
 		case ErrNoKey:
-			// laneLog.Logger.Fatalf("Client [%d] [PutAppend]:reply ErrNokey, but should not happend to putAndAppend args", ck.clientId)
+			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
+			ck.LatestOffset++
+			return ErrNil
+		case ErrCasFaildInt:
+			ck.LatestOffset++
+			return ErrCASFaild
 		case ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
@@ -265,6 +271,7 @@ func (ck *Clerk) write(key string, value []byte, op int32) error {
 				}
 
 			}
+
 		default:
 			laneLog.Logger.Fatalf("Client [%d] [PutAppend]:reply unknown err [%s](probaly not init)", ck.clientId, reply.Err)
 		}
