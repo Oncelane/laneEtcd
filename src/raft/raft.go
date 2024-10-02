@@ -370,6 +370,7 @@ func (rf *Raft) CopyEntries(args *pb.AppendEntriesArgs) {
 	if rf.commitIndex < min {
 		// laneLog.Logger.Infof("COMIT Term[%d] [%d] CommitIndex: [%d] -> [%d]", rf.currentTerm, rf.me, rf.commitIndex, min)
 		rf.commitIndex = min
+		rf.undateLastApplied()
 	}
 
 }
@@ -616,83 +617,60 @@ const (
 	AERejectRPC
 )
 
+// 外部调用负责上锁，此处不上锁
 func (rf *Raft) updateCommitIndex() {
 	//从matchIndex寻找一个大多数服务器认同的N
-	for !rf.killed() {
-		time.Sleep(time.Microsecond * 50)
-		_, isleader := rf.GetState()
-		if isleader {
-			rf.mu.Lock()
-			matchIndex := make([]int, 0)
-			matchIndex = append(matchIndex, rf.lastIndex())
-			for i := range rf.peers {
-				if i != rf.me {
-					matchIndex = append(matchIndex, rf.matchIndex[i])
-				}
+	if rf.state == leader {
+		matchIndex := make([]int, 0)
+		matchIndex = append(matchIndex, rf.lastIndex())
+		for i := range rf.peers {
+			if i != rf.me {
+				matchIndex = append(matchIndex, rf.matchIndex[i])
 			}
-
-			sort.Ints(matchIndex)
-
-			lenMat := len(matchIndex) //2 两台follower
-			N := matchIndex[lenMat/2] //1
-			if N > rf.commitIndex && (N <= rf.lastIncludeIndex || rf.currentTerm == int(rf.log[rf.index2LogPos(N)].Term)) {
-				// laneLog.Logger.Infof("COMIT Term[%d] [%d] It's matchIndex = %v", rf.currentTerm, rf.me, matchIndex)
-				// laneLog.Logger.Infof("COMIT Term[%d] [%d] commitIndex [%d] -> [%d] (leader action)", rf.currentTerm, rf.me, rf.commitIndex, N)
-				rf.IisBackIndex = N
-				rf.commitIndex = N
-			}
-			rf.mu.Unlock()
 		}
 
+		sort.Ints(matchIndex)
+
+		lenMat := len(matchIndex) //2 两台follower
+		N := matchIndex[lenMat/2] //1
+		if N > rf.commitIndex && (N <= rf.lastIncludeIndex || rf.currentTerm == int(rf.log[rf.index2LogPos(N)].Term)) {
+			// laneLog.Logger.Infof("COMIT Term[%d] [%d] It's matchIndex = %v", rf.currentTerm, rf.me, matchIndex)
+			// laneLog.Logger.Infof("COMIT Term[%d] [%d] commitIndex [%d] -> [%d] (leader action)", rf.currentTerm, rf.me, rf.commitIndex, N)
+			rf.IisBackIndex = N
+			rf.commitIndex = N
+			rf.undateLastApplied()
+		}
 	}
 }
 
 // 修改rf.lastApplied
 func (rf *Raft) undateLastApplied() {
-	var nomore = false
-	for !rf.killed() {
-		if nomore {
-			time.Sleep(time.Microsecond * 50)
-		}
-
-		func() {
-			// rf.snapshotXapplych.Lock()
-			// defer rf.snapshotXapplych.Unlock()
-			// laneLog.Logger.Infof("APPLY Term[%d] [%d] Wait for the lock🔐", rf.currentTerm, rf.me)
-			rf.mu.Lock()
-			// laneLog.Logger.Infof("APPLY Term[%d] [%d] Hode the lock🔐", rf.currentTerm, rf.me)
-			nomore = true
-			if rf.lastApplied < rf.commitIndex {
-				rf.lastApplied += 1
-				index := rf.index2LogPos(rf.lastApplied)
-				if index <= -1 || index >= len(rf.log) {
-					rf.lastApplied = rf.lastIncludeIndex
-					laneLog.Logger.Infof("ERROR? 👿 [%d]Ready to apply index[%d] But index out of Len of log, lastApplied[%d] commitIndex[%d] lastIncludeIndex[%d] logLen:%d", rf.me, index, rf.lastApplied, rf.commitIndex, rf.lastIncludeIndex, len(rf.log))
-					rf.mu.Unlock()
-					return
-				}
-				// laneLog.Logger.Infof("APPLY Term[%d] [%d] -> LOG [%d] value:[%d]", rf.currentTerm, rf.me, rf.lastApplied, rf.log[index].Value)
-
-				ApplyMsg := ApplyMsg{
-					CommandValid: true,
-					Command:      rf.log[index].Value,
-					CommandIndex: rf.lastApplied + 1,
-				}
-				// laneLog.Logger.Infof("APPLY Term[%d] [%d] Unlock the lock🔐 For Start applyerCh <- len[%d]", rf.currentTerm, rf.me, len(rf.applyChTerm))
-				rf.applyChTerm <- ApplyMsg
-				if rf.IisBackIndex == rf.lastApplied {
-					// laneLog.Logger.Infof("Term [%d] [%d] iisback = true iisbackIndex =[%d]", rf.currentTerm, rf.me, rf.IisBackIndex)
-					rf.IisBack = true
-				}
-				// laneLog.Logger.Infof("APPLY Term[%d] [%d] lock the lock🔐 For Finish applyerCh <-", rf.currentTerm, rf.me)
-				nomore = false
-				// laneLog.Logger.Infof("APPLY Term[%d] [%d] AppliedIndex [%d] CommitIndex [%d]", rf.currentTerm, rf.me, rf.lastApplied, rf.commitIndex)
-			}
+	// laneLog.Logger.Infof("APPLY Term[%d] [%d] Wait for the lock🔐", rf.currentTerm, rf.me)
+	// laneLog.Logger.Infof("APPLY Term[%d] [%d] Hode the lock🔐", rf.currentTerm, rf.me)
+	for rf.lastApplied < rf.commitIndex {
+		rf.lastApplied += 1
+		index := rf.index2LogPos(rf.lastApplied)
+		if index <= -1 || index >= len(rf.log) {
+			rf.lastApplied = rf.lastIncludeIndex
+			laneLog.Logger.Errorf("ERROR? 👿 [%d]Ready to apply index[%d] But index out of Len of log, lastApplied[%d] commitIndex[%d] lastIncludeIndex[%d] logLen:%d", rf.me, index, rf.lastApplied, rf.commitIndex, rf.lastIncludeIndex, len(rf.log))
 			rf.mu.Unlock()
-			// laneLog.Logger.Infof("APPLY Term[%d] [%d] Open the lock🔓", rf.currentTerm, rf.me)
-		}()
+			return
+		}
+		// laneLog.Logger.Infof("APPLY Term[%d] [%d] -> LOG [%d] value:[%d]", rf.currentTerm, rf.me, rf.lastApplied, rf.log[index].Value)
 
+		ApplyMsg := ApplyMsg{
+			CommandValid: true,
+			Command:      rf.log[index].Value,
+			CommandIndex: rf.lastApplied + 1,
+		}
+		// laneLog.Logger.Infof("APPLY Term[%d] [%d] Unlock the lock🔐 For Start applyerCh <- len[%d]", rf.currentTerm, rf.me, len(rf.applyChTerm))
+		rf.applyChTerm <- ApplyMsg
+		if rf.IisBackIndex == rf.lastApplied {
+			// laneLog.Logger.Infof("Term [%d] [%d] iisback = true iisbackIndex =[%d]", rf.currentTerm, rf.me, rf.IisBackIndex)
+			rf.IisBack = true
+		}
 	}
+
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -865,6 +843,7 @@ func (rf *Raft) electionLoop() {
 					for i := 0; i < len(rf.peers); i++ {
 						rf.matchIndex[i] = -1
 					}
+					rf.updateCommitIndex()
 					laneLog.Logger.Infof("❗ Term[%d] [%d]candidate -> leader", rf.currentTerm, rf.me)
 					rf.lastSendHeartbeatTime = time.Now().Add(-time.Millisecond * 2 * HeartBeatInterval)
 					// data, _ := json.Marshal(Op{
@@ -963,6 +942,7 @@ func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 		if reply.Success {
 			rf.nextIndex[server] = int(args.PrevLogIndex) + len(args.Entries) + 1
 			rf.matchIndex[server] = rf.nextIndex[server] - 1 //做闭右开，因此curLatestIndex指向的是最后一个发送的log的下一位可能为空
+			rf.updateCommitIndex()
 			if applychreply != nil {
 				*applychreply <- AEresult_Accept
 			}
@@ -997,7 +977,7 @@ func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 
 func (rf *Raft) appendEntriesLoop() {
 	for !rf.killed() {
-		time.Sleep(time.Microsecond * 50)
+		time.Sleep(time.Millisecond * 50)
 		func() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
@@ -1075,6 +1055,7 @@ func (rf *Raft) sendInstallSnapshotToPeerId(server int) {
 			laneLog.Logger.Infof("SNAPS Term[%d] [%d] leader success to Send a 📷 to [%d] nextIndex for it [%d] -> [%d] matchIndex [%d] -> [%d]", rf.currentTerm, rf.me, server, rf.nextIndex[server], rf.lastIndex()+1, rf.matchIndex[server], args.LastIncludeIndex)
 			rf.nextIndex[server] = rf.lastIndex() + 1
 			rf.matchIndex[server] = int(args.LastIncludeIndex)
+			rf.updateCommitIndex()
 		}
 	}(args)
 }
@@ -1172,6 +1153,7 @@ func Make(me int,
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = -1
 	}
+	rf.updateCommitIndex()
 	//heartBeat
 	rf.lastHearBeatTime = time.Now()
 	rf.lastSendHeartbeatTime = time.Now()
@@ -1204,8 +1186,8 @@ func Make(me int,
 	go rf.Applyer()
 	go rf.electionLoop()
 	go rf.appendEntriesLoop()
-	go rf.undateLastApplied()
-	go rf.updateCommitIndex()
+	// go rf.undateLastApplied()
+	// go rf.updateCommitIndex()
 
 	return rf
 }
