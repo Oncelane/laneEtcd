@@ -346,7 +346,11 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 	case int32(pb.OpType_CAST):
 		ori, _ := kv.kvMap.GetEntry(OP.Key)
 		if bytes.Equal(ori.Value, OP.OriValue) {
-			kv.kvMap.PutEntry(OP.Key, OP.Entry)
+			if len(OP.Entry.Value) == 0 {
+				kv.kvMap.Del(OP.Key)
+			} else {
+				kv.kvMap.PutEntry(OP.Key, OP.Entry)
+			}
 			kv.duplicateMap[OP.ClientId] = duplicateType{
 				Offset:    OP.Offset,
 				CASResult: true,

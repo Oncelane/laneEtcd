@@ -10,6 +10,7 @@ import (
 	"github.com/Oncelane/laneEtcd/proto/pb"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
+	"github.com/google/uuid"
 )
 
 var pipeLimit int = 1024 * 4000
@@ -342,11 +343,34 @@ func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
 	return nil, ErrNil
 }
 
-func (ck *Clerk) Lock() (uuid int64, err error) {
+// TODO 当TTL不为零时，启动watchDog机制
+func (ck *Clerk) Lock(key string, TTL time.Duration) (id string, err error) {
+	r, err := uuid.NewRandom()
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+		return "", err
+	}
 
-	return 0, nil
+	ok, err := ck.CAS(key, nil, []byte(r.String()), TTL)
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+		return "", err
+	}
+	if !ok {
+		return "", nil
+	}
+
+	return r.String(), nil
 }
 
-func (ck *Clerk) Unlock(uuid int64) error {
-	return nil
+func (ck *Clerk) Unlock(key, id string) (bool, error) {
+	ok, err := ck.CAS(key, []byte(id), nil, 0)
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	return true, nil
 }

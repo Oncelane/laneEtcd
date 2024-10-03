@@ -20,9 +20,11 @@ const (
 )
 
 var (
-	ErrCASFaild error = errors.New("etcd: cas op faild")
-	ErrNil      error = errors.New("etcd: nil key")
-	ErrFaild    error = errors.New("etcd: faild to connect")
+	ErrCASFaild    error = errors.New("etcd: cas op faild")
+	ErrNil         error = errors.New("etcd: nil key")
+	ErrFaild       error = errors.New("etcd: faild to connect")
+	ErrLockFaild   error = errors.New("etcd: lock faild")
+	ErrUnLockFaild error = errors.New("etcd: unlock faild")
 )
 
 type Err string
