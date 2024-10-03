@@ -288,47 +288,6 @@ func (ck *Clerk) changeNextSendId() {
 	ck.nextSendLocalId = (ck.nextSendLocalId + 1) % len(ck.servers)
 }
 
-// func ValueToData(value string, TTL time.Duration) (data []byte) {
-// 	v := ValueType{
-// 		Value:    value,
-// 		DeadTime: 0,
-// 	}
-// 	if TTL != 0 {
-// 		v.DeadTime = time.Now().Add(TTL).UnixMilli()
-// 	}
-// 	d, err := json.Marshal(v)
-// 	if err != nil {
-// 		laneLog.Logger.Fatalln(err)
-// 	}
-// 	return d
-// }
-
-// func ValueToDataCAS(origin, value string, TTL time.Duration) (data []byte) {
-// 	v := ValueType{
-// 		Origin:   origin,
-// 		Value:    value,
-// 		DeadTime: 0,
-// 	}
-// 	if TTL != 0 {
-// 		v.DeadTime = time.Now().Add(TTL).UnixMilli()
-// 	}
-// 	d, err := json.Marshal(v)
-// 	if err != nil {
-// 		laneLog.Logger.Fatalln(err)
-// 	}
-// 	return d
-// }
-
-// func DateToValue(data []byte) ValueType {
-// 	v := ValueType{}
-// 	// laneLog.Logger.Debugln("raw json:", string(data))
-// 	err := json.Unmarshal(data, &v)
-// 	if err != nil {
-// 		laneLog.Logger.Fatalln(err)
-// 	}
-// 	return v
-// }
-
 func (ck *Clerk) Put(key string, value []byte, TTL time.Duration) error {
 	return ck.write(key, value, nil, TTL, int32(pb.OpType_PutT))
 }
@@ -381,4 +340,13 @@ func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
 		return r, nil
 	}
 	return nil, ErrNil
+}
+
+func (ck *Clerk) Lock() (uuid int64, err error) {
+
+	return 0, nil
+}
+
+func (ck *Clerk) Unlock(uuid int64) error {
+	return nil
 }

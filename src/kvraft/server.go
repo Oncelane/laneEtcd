@@ -46,8 +46,6 @@ type KVServer struct {
 	grpc *grpc.Server
 
 	lastIndexCh chan int
-
-	casMapResult map[int64]bool
 }
 
 type duplicateType struct {
@@ -100,19 +98,15 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	//跟raft层之间的同步问题，raft刚当选leader的时候，还没有
 
 	var value [][]byte
-	now := time.Now().UnixMilli()
 	if args.WithPrefix {
 		entrys := kv.kvMap.GetEntryWithPrefix(args.Key)
 		value = make([][]byte, 0, len(entrys))
 		for _, e := range entrys {
-			if e.DeadTime != 0 && now > e.DeadTime {
-				continue
-			}
 			value = append(value, e.Value)
 		}
 	} else {
-		v, _ := kv.kvMap.GetEntry(args.Key)
-		if v.DeadTime == 0 || v.DeadTime >= now {
+		v, ok := kv.kvMap.GetEntry(args.Key)
+		if ok {
 			value = append(value, v.Value)
 		}
 	}
@@ -353,13 +347,10 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		ori, _ := kv.kvMap.GetEntry(OP.Key)
 		if bytes.Equal(ori.Value, OP.OriValue) {
 			kv.kvMap.PutEntry(OP.Key, OP.Entry)
-			kv.casMapResult[OP.ClientId+int64(OP.Offset)] = true
 			kv.duplicateMap[OP.ClientId] = duplicateType{
 				Offset:    OP.Offset,
 				CASResult: true,
 			}
-		} else {
-			kv.casMapResult[OP.ClientId+int64(OP.Offset)] = false
 		}
 	case int32(pb.OpType_GetT):
 
@@ -530,7 +521,6 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 		lastIncludeIndex: 0,
 		kvMap:            trie.NewTrieX(),
 		lastIndexCh:      make(chan int),
-		casMapResult:     make(map[int64]bool),
 		duplicateMap:     make(map[int64]duplicateType),
 	}
 

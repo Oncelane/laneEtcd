@@ -3,6 +3,7 @@ package trie
 import (
 	"bytes"
 	"encoding/gob"
+	"time"
 
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 
@@ -52,6 +53,8 @@ func (t *TrieX) Keys() []string {
 }
 
 // ------------------Entry版本------------------
+
+// get额外承担惰性删除
 func (t *TrieX) GetEntry(key string) (Entry, bool) {
 	n, ok := t.tree.Find(key)
 	if !ok {
@@ -62,6 +65,10 @@ func (t *TrieX) GetEntry(key string) (Entry, bool) {
 		laneLog.Logger.Fatalln("get value is not Entry")
 		return Entry{}, false
 	}
+	if rt.DeadTime != 0 && rt.DeadTime > time.Now().UnixMilli() {
+		t.tree.Remove(key)
+		return Entry{}, false
+	}
 	return rt, true
 }
 
@@ -70,8 +77,10 @@ func (t *TrieX) GetEntryWithPrefix(key string) []Entry {
 	// 防止多次扩容
 	rt := make([]Entry, 0, len(keys))
 	for _, key := range keys {
-		v, _ := t.GetEntry(key)
-		rt = append(rt, v)
+		v, ok := t.GetEntry(key)
+		if ok {
+			rt = append(rt, v)
+		}
 	}
 	return rt
 }
