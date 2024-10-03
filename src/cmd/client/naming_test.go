@@ -43,7 +43,7 @@ func (n *Node) Key() string {
 }
 
 func (n *Node) SetNode(ck *kvraft.Clerk, TTL time.Duration) {
-	err := ck.Put(n.Key(), string(n.Marshal()), TTL)
+	err := ck.Put(n.Key(), n.Marshal(), TTL)
 	if err != nil {
 		laneLog.Logger.Fatal(err)
 	}
@@ -52,6 +52,9 @@ func (n *Node) SetNode(ck *kvraft.Clerk, TTL time.Duration) {
 func GetNode(ck *kvraft.Clerk, name string) ([]*Node, error) {
 	datas, err := ck.GetWithPrefix(name)
 	if err != nil {
+		if err == kvraft.ErrNil {
+			return nil, nil
+		}
 		laneLog.Logger.Fatalln(err)
 		return nil, err
 	}
@@ -97,7 +100,7 @@ func TestNaming(t *testing.T) {
 		timeout := time.Millisecond * 800
 		n.SetNode(ck, timeout)
 	}
-	laneLog.Logger.Infoln("set node success")
+	laneLog.Logger.Infoln("success set node TTL 800ms ")
 
 	nodes, err := GetNode(ck, "comet")
 	if err != nil {
@@ -107,6 +110,7 @@ func TestNaming(t *testing.T) {
 		laneLog.Logger.Infof("get nodes:%+v", n)
 	}
 	time.Sleep(time.Second)
+	laneLog.Logger.Infoln("sleep 1000ms")
 	nodes, err = GetNode(ck, "comet")
 	if err != nil {
 		laneLog.Logger.Fatalln(err)

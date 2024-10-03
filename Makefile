@@ -31,3 +31,7 @@ runp:
 
 stop:
 	pkill -f ./etcd
+
+clean:
+	rm -rf bin/etcd; \
+	mkdir -p bin/etcd/; \

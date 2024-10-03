@@ -64,12 +64,14 @@ enum OpType {
 message PutAppendArgs {
   string Key = 1;
   bytes Value = 2;
-  int32 Op = 3; // "Put" or "Append"
+  int64 DeadTime = 3;
+  bytes OriValue = 4;
+  int32 Op = 5; // "Put" or "Append"
                 // You'll have to add definitions here.
                 // Field names must start with capital
                 // letters, otherwise RPC will break.
-  int64 ClientId = 4;
-  int32 LatestOffset = 5;
+  int64 ClientId = 6;
+  int32 LatestOffset = 7;
 }
 
 message PutAppendReply {

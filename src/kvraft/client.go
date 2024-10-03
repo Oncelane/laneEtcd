@@ -3,7 +3,6 @@ package kvraft
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"math/big"
 	"sync"
 	"time"
@@ -187,7 +186,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
-func (ck *Clerk) write(key string, value []byte, op int32) error {
+func (ck *Clerk) write(key string, value, oriValue []byte, TTL time.Duration, op int32) error {
 	// You will have to modify this function.
 
 	ck.mu.Lock()
@@ -195,9 +194,15 @@ func (ck *Clerk) write(key string, value []byte, op int32) error {
 	args := pb.PutAppendArgs{
 		Key:          key,
 		Value:        value,
+		OriValue:     oriValue,
 		Op:           op,
 		ClientId:     ck.clientId,
 		LatestOffset: ck.LatestOffset,
+	}
+	if TTL == 0 {
+		args.DeadTime = 0
+	} else {
+		args.DeadTime = time.Now().Add(TTL).UnixMilli()
 	}
 	count := 0
 	lastSendLocalId := -1
@@ -283,63 +288,60 @@ func (ck *Clerk) changeNextSendId() {
 	ck.nextSendLocalId = (ck.nextSendLocalId + 1) % len(ck.servers)
 }
 
-func ValueToData(value string, TTL time.Duration) (data []byte) {
-	v := ValueType{
-		Value:    value,
-		DeadTime: 0,
-	}
-	if TTL != 0 {
-		v.DeadTime = time.Now().Add(TTL).UnixMilli()
-	}
-	d, err := json.Marshal(v)
-	if err != nil {
-		laneLog.Logger.Fatalln(err)
-	}
-	return d
-}
+// func ValueToData(value string, TTL time.Duration) (data []byte) {
+// 	v := ValueType{
+// 		Value:    value,
+// 		DeadTime: 0,
+// 	}
+// 	if TTL != 0 {
+// 		v.DeadTime = time.Now().Add(TTL).UnixMilli()
+// 	}
+// 	d, err := json.Marshal(v)
+// 	if err != nil {
+// 		laneLog.Logger.Fatalln(err)
+// 	}
+// 	return d
+// }
 
-func ValueToDataCAS(origin, value string, TTL time.Duration) (data []byte) {
-	v := ValueType{
-		Origin:   origin,
-		Value:    value,
-		DeadTime: 0,
-	}
-	if TTL != 0 {
-		v.DeadTime = time.Now().Add(TTL).UnixMilli()
-	}
-	d, err := json.Marshal(v)
-	if err != nil {
-		laneLog.Logger.Fatalln(err)
-	}
-	return d
-}
+// func ValueToDataCAS(origin, value string, TTL time.Duration) (data []byte) {
+// 	v := ValueType{
+// 		Origin:   origin,
+// 		Value:    value,
+// 		DeadTime: 0,
+// 	}
+// 	if TTL != 0 {
+// 		v.DeadTime = time.Now().Add(TTL).UnixMilli()
+// 	}
+// 	d, err := json.Marshal(v)
+// 	if err != nil {
+// 		laneLog.Logger.Fatalln(err)
+// 	}
+// 	return d
+// }
 
-func DateToValue(data []byte) ValueType {
-	v := ValueType{}
-	// laneLog.Logger.Debugln("raw json:", string(data))
-	err := json.Unmarshal(data, &v)
-	if err != nil {
-		laneLog.Logger.Fatalln(err)
-	}
-	return v
-}
+// func DateToValue(data []byte) ValueType {
+// 	v := ValueType{}
+// 	// laneLog.Logger.Debugln("raw json:", string(data))
+// 	err := json.Unmarshal(data, &v)
+// 	if err != nil {
+// 		laneLog.Logger.Fatalln(err)
+// 	}
+// 	return v
+// }
 
-func (ck *Clerk) Put(key string, value string, TTL time.Duration) error {
-	d := ValueToData(value, TTL)
-	return ck.write(key, d, int32(pb.OpType_PutT))
+func (ck *Clerk) Put(key string, value []byte, TTL time.Duration) error {
+	return ck.write(key, value, nil, TTL, int32(pb.OpType_PutT))
 }
-func (ck *Clerk) Append(key string, value string, TTL time.Duration) error {
-	d := ValueToData(value, TTL)
-	return ck.write(key, d, int32(pb.OpType_AppendT))
+func (ck *Clerk) Append(key string, value []byte, TTL time.Duration) error {
+	return ck.write(key, value, nil, TTL, int32(pb.OpType_AppendT))
 }
 
 func (ck *Clerk) Delete(key string) error {
-	return ck.write(key, nil, int32(pb.OpType_DelT))
+	return ck.write(key, nil, nil, 0, int32(pb.OpType_DelT))
 }
 
-func (ck *Clerk) CAS(key, origin, dest string, TTL time.Duration) (bool, error) {
-	d := ValueToDataCAS(origin, dest, TTL)
-	err := ck.write(key, d, int32(pb.OpType_CAST))
+func (ck *Clerk) CAS(key string, origin, dest []byte, TTL time.Duration) (bool, error) {
+	err := ck.write(key, dest, origin, TTL, int32(pb.OpType_CAST))
 	if err != nil {
 		if err == ErrCASFaild {
 			return false, nil
@@ -350,7 +352,7 @@ func (ck *Clerk) CAS(key, origin, dest string, TTL time.Duration) (bool, error) 
 }
 
 func (ck *Clerk) batchWrite(p *Pipe) error {
-	return ck.write("", p.Marshal(), int32(pb.OpType_BatchT))
+	return ck.write("", p.Marshal(), nil, 0, int32(pb.OpType_BatchT))
 }
 
 func (ck *Clerk) Pipeline() *Pipe {
@@ -359,57 +361,24 @@ func (ck *Clerk) Pipeline() *Pipe {
 	}
 }
 
-func (ck *Clerk) Get(key string) (string, error) {
+func (ck *Clerk) Get(key string) ([]byte, error) {
 	r, err := ck.doGet(key, false)
 	if err != nil {
-		return "", err
-	}
-	if len(r) == 1 {
-		rr := r[0]
-		v := DateToValue(rr)
-		if v.DeadTime != 0 && time.UnixMilli(v.DeadTime).Before(time.Now()) {
-			return "", ErrNil
-		}
-		return v.Value, nil
-	}
-	return "", ErrNil
-}
-
-func (ck *Clerk) GetWithPrefix(key string) ([]string, error) {
-	rawValues, err := ck.doGet(key, true)
-	if err != nil {
-		// laneLog.Logger.Fatalln(err)
 		return nil, err
 	}
-
-	var (
-		validIndex   = make([]bool, len(rawValues))
-		validMarshal = make([]ValueType, len(rawValues))
-		validCount   = 0
-	)
-
-	for i := range rawValues {
-		validMarshal[i] = DateToValue([]byte(rawValues[i]))
-		if validMarshal[i].DeadTime != 0 && time.UnixMilli(validMarshal[i].DeadTime).Before(time.Now()) {
-			// just skip
-			continue
-		}
-		validIndex[i] = true
-		validCount++
+	if len(r) == 1 {
+		return r[0], nil
 	}
-	if validCount == 0 {
-		return nil, nil
-	}
+	return nil, ErrNil
+}
 
-	var (
-		values = make([]string, validCount)
-		index  = 0
-	)
-	for i, valie := range validIndex {
-		if valie {
-			values[index] = validMarshal[i].Value
-			index++
-		}
+func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
+	r, err := ck.doGet(key, true)
+	if err != nil {
+		return nil, err
 	}
-	return values, nil
+	if len(r) != 0 {
+		return r, nil
+	}
+	return nil, ErrNil
 }

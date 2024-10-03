@@ -8,6 +8,7 @@ import (
 
 	"github.com/Oncelane/laneEtcd/proto/pb"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
+	"github.com/Oncelane/laneEtcd/src/pkg/trie"
 	"github.com/Oncelane/laneEtcd/src/raft"
 )
 
@@ -47,25 +48,29 @@ func (p *Pipe) Delete(key string) error {
 	}
 	return p.append(op)
 }
-func (p *Pipe) Put(key, value string, TTL time.Duration) error {
-	d := ValueToData(value, TTL)
+func (p *Pipe) Put(key string, value []byte, TTL time.Duration) error {
 	op := raft.Op{
-		Key:    key,
-		Value:  string(d),
+		Key: key,
+		Entry: trie.Entry{
+			Value:    value,
+			DeadTime: time.Now().Add(TTL).UnixMilli(),
+		},
 		OpType: int32(pb.OpType_PutT),
 	}
 	return p.append(op)
 }
 
-// func (p *Pipe) Append(key, value string, TTL time.Duration) error {
-// 	d := ValueToData(value, TTL)
-// 	op := raft.Op{
-// 		Key:    key,
-// 		Value:  string(d),
-// 		OpType: int32(pb.OpType_AppendT),
-// 	}
-// 	return p.append(op)
-// }
+func (p *Pipe) Append(key string, value []byte, TTL time.Duration) error {
+	op := raft.Op{
+		Key: key,
+		Entry: trie.Entry{
+			Value:    value,
+			DeadTime: time.Now().Add(TTL).UnixMilli(),
+		},
+		OpType: int32(pb.OpType_AppendT),
+	}
+	return p.append(op)
+}
 
 func (p *Pipe) append(op raft.Op) error {
 	p.ops = append(p.ops, op)

@@ -24,7 +24,7 @@ func init() {
 
 func TestTimeOut(t *testing.T) {
 	key := "comet"
-	value := "localhost"
+	value := []byte("localhost")
 	ttl := time.Millisecond * 300
 	ck.Put(key, value, ttl)
 	laneLog.Logger.Infof("set key [%s] value [%s] TTL[%v]", key, value, ttl)
@@ -45,7 +45,7 @@ func TestTimeOut(t *testing.T) {
 		laneLog.Logger.Infof("get value [%s]", v)
 	}
 	laneLog.Logger.Infof("reset key [%s] value [%s] TTL[%v]", key, value, ttl)
-	ck.Put("comet", "localhost", time.Millisecond*300)
+	ck.Put("comet", value, time.Millisecond*300)
 	v, err = ck.Get("comet")
 	if err == kvraft.ErrNil {
 		laneLog.Logger.Infoln("err:", err)
@@ -55,9 +55,10 @@ func TestTimeOut(t *testing.T) {
 }
 
 func BenchmarkLaneEtcdPut(b *testing.B) {
-
+	key := "logic"
+	value := []byte("test")
 	for range b.N {
-		err := ck.Put("logic", "test", 0)
+		err := ck.Put(key, value, 0)
 		if err != nil {
 			b.Error(err)
 		}
@@ -65,10 +66,11 @@ func BenchmarkLaneEtcdPut(b *testing.B) {
 }
 
 func TestLaneEtcdPut(t *testing.T) {
-
+	key := "logic"
+	value := []byte("test")
 	for range 4 {
 		start := time.Now()
-		err := ck.Put("logic", "test", 0)
+		err := ck.Put(key, value, 0)
 		laneLog.Logger.Warnln("client finish put key[%s] spand time:", "logic", time.Since(start))
 		if err != nil {
 			t.Error(err)

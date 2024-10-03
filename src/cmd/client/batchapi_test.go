@@ -12,7 +12,7 @@ func TestBatchApi(t *testing.T) {
 	start := time.Now()
 	pipe := ck.Pipeline()
 	for i := range 1000 {
-		pipe.Put("key"+strconv.Itoa(i), strconv.Itoa(i), 0)
+		pipe.Put("key"+strconv.Itoa(i), []byte(strconv.Itoa(i)), 0)
 	}
 	err := pipe.Exec()
 	if err != nil {

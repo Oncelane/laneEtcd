@@ -7,15 +7,17 @@ import (
 )
 
 func TestCAS(t *testing.T) {
-	key := "cas"
-	ok, err := ck.CAS(key, "", "SetNX", 0)
+	key := "comet"
+	ck.Delete(key)
+	laneLog.Logger.Infof("CAS set key[%s] ori[%v] dest[%s] ", key, nil, "A")
+	ok, err := ck.CAS(key, nil, []byte("A"), 0)
 	if err != nil {
 		laneLog.Logger.Infoln(err)
 	}
 	if ok {
-		laneLog.Logger.Infoln("success set cas")
+		laneLog.Logger.Infof("success")
 	} else {
-		laneLog.Logger.Infoln("faild set cas")
+		laneLog.Logger.Infof("fail")
 	}
 
 	rt, err := ck.Get(key)
@@ -24,15 +26,15 @@ func TestCAS(t *testing.T) {
 	}
 	laneLog.Logger.Infof("get key[%s] value[%s]", key, rt)
 
-	laneLog.Logger.Infoln("reset SetNX")
-	ok, err = ck.CAS(key, "", "SetNX", 0)
+	laneLog.Logger.Infof("CAS set again key[%s] ori[%v] dest[%s]", key, nil, "B")
+	ok, err = ck.CAS(key, nil, []byte("B"), 0)
 	if err != nil {
 		laneLog.Logger.Infoln(err)
 	}
 	if ok {
-		laneLog.Logger.Infoln("success set cas")
+		laneLog.Logger.Infof("success")
 	} else {
-		laneLog.Logger.Infoln("faild set cas")
+		laneLog.Logger.Infof("fail")
 	}
 
 	rt, err = ck.Get(key)
@@ -40,16 +42,15 @@ func TestCAS(t *testing.T) {
 		laneLog.Logger.Infoln(err)
 	}
 	laneLog.Logger.Infof("get key[%s] value[%s]", key, rt)
-
-	laneLog.Logger.Infoln("reset SetNX")
-	ok, err = ck.CAS(key, "SetNX", "SetEX", 0)
+	laneLog.Logger.Infof("CAS set again key[%s] ori[%s] dest[%s]", key, "A", "B")
+	ok, err = ck.CAS(key, []byte("A"), []byte("B"), 0)
 	if err != nil {
 		laneLog.Logger.Infoln(err)
 	}
 	if ok {
-		laneLog.Logger.Infoln("success set cas")
+		laneLog.Logger.Infof("success")
 	} else {
-		laneLog.Logger.Infoln("faild set cas")
+		laneLog.Logger.Infof("fail")
 	}
 
 	rt, err = ck.Get(key)

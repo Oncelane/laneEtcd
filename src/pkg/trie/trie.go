@@ -19,22 +19,19 @@ func NewTrieX() *TrieX {
 	}
 }
 
-func (t *TrieX) Get(key string) (string, bool) {
+// --------------------普通版本----------------------
+
+func (t *TrieX) Get(key string) (any, bool) {
 	n, ok := t.tree.Find(key)
 	if !ok {
 		return "", false
 	}
-	rt, ok := n.Meta().(string)
-	if !ok {
-		laneLog.Logger.Fatalln("get value is not string")
-		return "", false
-	}
-	return rt, true
+	return n.Meta(), true
 }
 
-func (t *TrieX) GetWithPrefix(key string) []string {
+func (t *TrieX) GetWithPrefix(key string) []any {
 	keys := t.tree.PrefixSearch(key)
-	var rt []string
+	rt := make([]any, 0, len(keys))
 	for _, key := range keys {
 		v, _ := t.Get(key)
 		rt = append(rt, v)
@@ -42,7 +39,7 @@ func (t *TrieX) GetWithPrefix(key string) []string {
 	return rt
 }
 
-func (t *TrieX) Put(key, value string) {
+func (t *TrieX) Put(key string, value any) {
 	t.tree.Add(key, value)
 }
 
@@ -54,14 +51,42 @@ func (t *TrieX) Keys() []string {
 	return t.tree.Keys()
 }
 
+// ------------------Entry版本------------------
+func (t *TrieX) GetEntry(key string) (Entry, bool) {
+	n, ok := t.tree.Find(key)
+	if !ok {
+		return Entry{}, false
+	}
+	rt, ok := n.Meta().(Entry)
+	if !ok {
+		laneLog.Logger.Fatalln("get value is not Entry")
+		return Entry{}, false
+	}
+	return rt, true
+}
+
+func (t *TrieX) GetEntryWithPrefix(key string) []Entry {
+	keys := t.tree.PrefixSearch(key)
+	// 防止多次扩容
+	rt := make([]Entry, 0, len(keys))
+	for _, key := range keys {
+		v, _ := t.GetEntry(key)
+		rt = append(rt, v)
+	}
+	return rt
+}
+
+func (t *TrieX) PutEntry(key string, value Entry) {
+	t.tree.Add(key, value)
+}
+
 func (t *TrieX) Marshal() ([]byte, error) {
 
 	w := new(bytes.Buffer)
 	e := gob.NewEncoder(w)
 	keys := t.tree.Keys()
-	values := make([]string, 0)
+	values := make([]any, 0, len(keys))
 	for _, key := range keys {
-
 		value, _ := t.Get(key)
 		values = append(values, value)
 	}
@@ -76,12 +101,30 @@ func (t *TrieX) Marshal() ([]byte, error) {
 	return w.Bytes(), nil
 }
 
+func (t *TrieX) MarshalEncoder(e *gob.Encoder) error {
+	keys := t.tree.Keys()
+	values := make([]any, 0, len(keys))
+	for _, key := range keys {
+		value, _ := t.Get(key)
+		values = append(values, value)
+	}
+	err := e.Encode(keys)
+	if err != nil {
+		return err
+	}
+	err = e.Encode(values)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (t *TrieX) UmMarshal(data []byte) error {
 	t.tree = trie.New()
 	w := bytes.NewBuffer(data)
 	d := gob.NewDecoder(w)
 	keys := make([]string, 0)
-	values := make([]string, 0)
+	values := make([]any, 0)
 	err := d.Decode(&keys)
 	if err != nil {
 		return err
