@@ -374,3 +374,27 @@ func (ck *Clerk) Unlock(key, id string) (bool, error) {
 	}
 	return true, nil
 }
+
+func (ck *Clerk) WatchDog(key string, value []byte) (cancel func()) {
+	// 选择最小1s的生存周期
+	var (
+		TTL  = time.Second * 5
+		flag = new(bool)
+	)
+	ck.Put(key, value, TTL)
+	*flag = false
+	go func(key string, ori []byte) { //每500ms续期一次WatchDog
+		for {
+			curData := make([]byte, len(ori))
+			copy(curData, ori)
+			if *flag {
+				return
+			}
+			ck.Put(key, curData, TTL)
+			time.Sleep(TTL / 2)
+		}
+	}(key, value)
+	return func() {
+		*flag = true
+	}
+}

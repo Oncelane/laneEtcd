@@ -65,7 +65,9 @@ func (t *TrieX) GetEntry(key string) (Entry, bool) {
 		laneLog.Logger.Fatalln("get value is not Entry")
 		return Entry{}, false
 	}
-	if rt.DeadTime != 0 && rt.DeadTime > time.Now().UnixMilli() {
+	// laneLog.Logger.Debugln("entry time:", rt.DeadTime, "timeNode:", time.Now().UnixMilli())
+	if rt.DeadTime != 0 && rt.DeadTime < time.Now().UnixMilli() {
+		// laneLog.Logger.Debugln("remove for dead")s
 		t.tree.Remove(key)
 		return Entry{}, false
 	}
