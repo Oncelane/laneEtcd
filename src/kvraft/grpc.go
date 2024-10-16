@@ -10,7 +10,7 @@ import (
 
 type KVClient struct {
 	Valid    bool
-	conn     pb.KvserverClient
+	Conn     pb.KvserverClient
 	Realconn *grpc.ClientConn
 }
 
@@ -24,7 +24,7 @@ func NewKvClient(addr string) *KVClient {
 
 	ret := &KVClient{
 		Valid: true,
-		conn:  client,
+		Conn:  client,
 	}
 	return ret
 }

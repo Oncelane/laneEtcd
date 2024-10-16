@@ -5,19 +5,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Oncelane/laneEtcd/src/client"
 	"github.com/Oncelane/laneEtcd/src/kvraft"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-var ck *kvraft.Clerk
+var ck *client.Clerk
 
 func init() {
 	conf := laneConfig.Clerk{}
 	laneConfig.Init("config.yml", &conf)
 	// laneLog.Logger.Debugln("check conf", conf)
-	ck = kvraft.MakeClerk(conf)
+	ck = client.MakeClerk(conf)
 }
 
 // 测试TTL功能

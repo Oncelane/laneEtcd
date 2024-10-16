@@ -1,4 +1,4 @@
-package kvraft
+package client
 
 import (
 	"bytes"

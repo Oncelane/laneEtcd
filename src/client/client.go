@@ -1,4 +1,4 @@
-package kvraft
+package client
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/kvraft"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 	"github.com/google/uuid"
@@ -16,7 +17,7 @@ import (
 var pipeLimit int = 1024 * 4000
 
 type Clerk struct {
-	servers []*KVClient
+	servers []*kvraft.KVClient
 	// You will have to modify this struct.
 	nextSendLocalId int
 	LatestOffset    int32
@@ -42,7 +43,7 @@ func (c *Clerk) watchEtcd() {
 				if kvclient.Realconn != nil {
 					kvclient.Realconn.Close()
 				}
-				k := NewKvClient(c.conf.EtcdAddrs[i])
+				k := kvraft.NewKvClient(c.conf.EtcdAddrs[i])
 				if k != nil {
 					c.servers[i] = k
 					// laneLog.Logger.Warnf("update etcd server[%d] addr[%s]", i, c.conf.EtcdAddrs[i])
@@ -57,9 +58,9 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 	ck := new(Clerk)
 	ck.conf = conf
 	// You'll have to add code here
-	ck.servers = make([]*KVClient, len(conf.EtcdAddrs))
+	ck.servers = make([]*kvraft.KVClient, len(conf.EtcdAddrs))
 	for i := range ck.servers {
-		ck.servers[i] = new(KVClient)
+		ck.servers[i] = new(kvraft.KVClient)
 		ck.servers[i].Valid = false
 	}
 	ck.nextSendLocalId = int(nrand() % int64(len(conf.EtcdAddrs)))
@@ -103,7 +104,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 	for {
 		totalCount++
 		if totalCount > 2*len(ck.servers)*3 {
-			return nil, ErrFaild
+			return nil, kvraft.ErrFaild
 		}
 		if ck.nextSendLocalId == lastSendLocalId {
 			count++
@@ -127,7 +128,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 			time.Sleep(time.Second)
 			continue
 		}
-		reply, err := ck.servers[ck.nextSendLocalId].conn.Get(context.Background(), &args)
+		reply, err := ck.servers[ck.nextSendLocalId].Conn.Get(context.Background(), &args)
 
 		//根据reply初始化一下本地server表
 
@@ -142,19 +143,19 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 		ck.sToc[reply.ServerId] = ck.nextSendLocalId
 
 		switch reply.Err {
-		case ErrOK:
+		case kvraft.ErrOK:
 			ck.LatestOffset++
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
 			if len(reply.Value) == 0 {
-				return nil, ErrNil
+				return nil, kvraft.ErrNil
 			}
 
 			return reply.Value, nil
-		case ErrNoKey:
+		case kvraft.ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
 			ck.LatestOffset++
-			return nil, ErrNil
-		case ErrWrongLeader:
+			return nil, kvraft.ErrNil
+		case kvraft.ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
 			if reply.LeaderId == -1 {
@@ -169,7 +170,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 				}
 
 			}
-		case ErrWaitForRecover:
+		case kvraft.ErrWaitForRecover:
 			// laneLog.Logger.Infof("client [%d] [Get]:[Wait for leader recover]", ck.clientId)
 			time.Sleep(time.Millisecond * 200)
 		default:
@@ -211,7 +212,7 @@ func (ck *Clerk) write(key string, value, oriValue []byte, TTL time.Duration, op
 	for {
 		totalCount++
 		if totalCount > 2*len(ck.servers)*3 {
-			return ErrFaild
+			return kvraft.ErrFaild
 		}
 		if ck.nextSendLocalId == lastSendLocalId {
 			count++
@@ -236,7 +237,7 @@ func (ck *Clerk) write(key string, value, oriValue []byte, TTL time.Duration, op
 		}
 
 		// laneLog.Logger.Infof("clinet [%d] [PutAppend]:send[%d] args[%v]", ck.clientId, ck.nextSendLocalId, args.String())
-		reply, err := ck.servers[ck.nextSendLocalId].conn.PutAppend(context.Background(), &args)
+		reply, err := ck.servers[ck.nextSendLocalId].Conn.PutAppend(context.Background(), &args)
 		// laneLog.Logger.Debugln("receive etcd:", reply.String(), err)
 		//根据reply初始化一下本地server表
 
@@ -251,18 +252,18 @@ func (ck *Clerk) write(key string, value, oriValue []byte, TTL time.Duration, op
 		ck.sToc[reply.ServerId] = ck.nextSendLocalId
 
 		switch reply.Err {
-		case ErrOK:
+		case kvraft.ErrOK:
 			ck.LatestOffset++
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[OK] get args[%v] reply[%v]", ck.clientId, args, reply)
 			return nil
-		case ErrNoKey:
+		case kvraft.ErrNoKey:
 			// laneLog.Logger.Infof("clinet [%d] [Get]:[ErrNo key] get args[%v]", ck.clientId, args)
 			ck.LatestOffset++
-			return ErrNil
-		case ErrCasFaildInt:
+			return kvraft.ErrNil
+		case kvraft.ErrCasFaildInt:
 			ck.LatestOffset++
-			return ErrCASFaild
-		case ErrWrongLeader:
+			return kvraft.ErrCASFaild
+		case kvraft.ErrWrongLeader:
 			// laneLog.Logger.Infof("clinet [%d] [PutAppend]:[ErrWrong LeaderId][%d] get args[%v] reply[%v]", ck.clientId, ck.nextSendLocalId, args, reply)
 			//对方也不知道leader
 			if reply.LeaderId == -1 {
@@ -303,7 +304,7 @@ func (ck *Clerk) Delete(key string) error {
 func (ck *Clerk) CAS(key string, origin, dest []byte, TTL time.Duration) (bool, error) {
 	err := ck.write(key, dest, origin, TTL, int32(pb.OpType_CAST))
 	if err != nil {
-		if err == ErrCASFaild {
+		if err == kvraft.ErrCASFaild {
 			return false, nil
 		}
 		return false, err
@@ -329,7 +330,7 @@ func (ck *Clerk) Get(key string) ([]byte, error) {
 	if len(r) == 1 {
 		return r[0], nil
 	}
-	return nil, ErrNil
+	return nil, kvraft.ErrNil
 }
 
 func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
@@ -340,7 +341,7 @@ func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
 	if len(r) != 0 {
 		return r, nil
 	}
-	return nil, ErrNil
+	return nil, kvraft.ErrNil
 }
 
 // TODO 当TTL不为零时，启动watchDog机制
@@ -376,7 +377,7 @@ func (ck *Clerk) Unlock(key, id string) (bool, error) {
 }
 
 func (ck *Clerk) WatchDog(key string, value []byte) (cancel func()) {
-	// 选择最小1s的生存周期
+	// 选择最小5s的生存周期
 	var (
 		TTL  = time.Second * 5
 		flag = new(bool)
@@ -391,7 +392,7 @@ func (ck *Clerk) WatchDog(key string, value []byte) (cancel func()) {
 				return
 			}
 			ck.Put(key, curData, TTL)
-			time.Sleep(TTL / 2)
+			time.Sleep(TTL)
 		}
 	}(key, value)
 	return func() {

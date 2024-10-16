@@ -1,76 +1,17 @@
 package client_test
 
 import (
-	"encoding/json"
 	"math/rand"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/Oncelane/laneEtcd/src/kvraft"
+	"github.com/Oncelane/laneEtcd/src/client"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 )
 
-type Node struct {
-	Name     string
-	AppId    string
-	Port     string
-	IPs      []string
-	Location string
-	Connect  int32
-	Weight   int32
-	Env      string
-	MetaDate map[string]string //"color" "version"
-}
-
-func (n *Node) Marshal() []byte {
-	data, err := json.Marshal(n)
-	if err != nil {
-		laneLog.Logger.Fatalln(err)
-	}
-	return data
-}
-
-func (n *Node) Unmarshal(data []byte) {
-	err := json.Unmarshal(data, n)
-	if err != nil {
-		laneLog.Logger.Fatalln(err)
-	}
-}
-
-func (n *Node) Key() string {
-	return n.Name
-}
-
-func (n *Node) SetNode(ck *kvraft.Clerk, TTL time.Duration) {
-	err := ck.Put(n.Key(), n.Marshal(), TTL)
-	if err != nil {
-		laneLog.Logger.Fatal(err)
-	}
-}
-
-func GetNode(ck *kvraft.Clerk, name string) ([]*Node, error) {
-	datas, err := ck.GetWithPrefix(name)
-	if err != nil {
-		if err == kvraft.ErrNil {
-			return nil, nil
-		}
-		laneLog.Logger.Fatalln(err)
-		return nil, err
-	}
-	// laneLog.Logger.Debugln("raw data:", datas)
-	nodes := make([]*Node, len(datas))
-	for i := range datas {
-		// laneLog.Logger.Debugln(datas[i])
-		n := &Node{}
-		n.Unmarshal([]byte(datas[i]))
-		nodes[i] = n
-	}
-	return nodes, nil
-}
-
 func TestNamingMarshal(t *testing.T) {
-	n := Node{
+	n := client.Node{
 		Name:     "comet",
 		AppId:    "v1.0",
 		Port:     ":8020",
@@ -79,13 +20,13 @@ func TestNamingMarshal(t *testing.T) {
 		MetaDate: map[string]string{"color": "red"},
 	}
 	data := n.Marshal()
-	nn := Node{}
+	nn := client.Node{}
 	nn.Unmarshal(data)
 	laneLog.Logger.Infoln("unmashal:", nn)
 }
 
 func TestNaming(t *testing.T) {
-	n := Node{
+	n := client.Node{
 		Name:     "comet",
 		AppId:    "v1.0",
 		Port:     ":8020",
@@ -102,16 +43,83 @@ func TestNaming(t *testing.T) {
 	}
 	laneLog.Logger.Infoln("success set node TTL 800ms ")
 
-	nodes, err := GetNode(ck, "comet")
+	// check node
+	nodes, err := client.GetNode(ck, "comet")
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
 	for _, n := range nodes {
 		laneLog.Logger.Infof("get nodes:%+v", n)
 	}
+
+	// after 1 sercond
 	time.Sleep(time.Second)
 	laneLog.Logger.Infoln("sleep 1000ms")
-	nodes, err = GetNode(ck, "comet")
+
+	// check node
+	nodes, err = client.GetNode(ck, "comet")
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	if len(nodes) == 0 {
+		laneLog.Logger.Infoln("no node")
+	}
+	for _, n := range nodes {
+		laneLog.Logger.Infof("get nodes:%+v", n)
+	}
+}
+
+func TestNamingWatch(t *testing.T) {
+	n := client.Node{
+		Name:     "comet",
+		AppId:    "v1.0",
+		Port:     ":8020",
+		Location: "sz",
+		Env:      "produce",
+		MetaDate: map[string]string{"color": "red"},
+	}
+	cancles := make([]func(), 0, 4)
+	for i := range 4 {
+		n.Name = "comet" + strconv.Itoa(i)
+		n.IPs = []string{"localhost" + strconv.Itoa(i)}
+		n.Connect = int32(rand.Int() % 10000)
+		cancles = append(cancles, n.SetNode_Watch(ck))
+	}
+	laneLog.Logger.Infoln("success set node WatchDog ")
+
+	// check node
+	nodes, err := client.GetNode(ck, "comet")
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	for _, n := range nodes {
+		laneLog.Logger.Infof("get nodes:%+v", n)
+	}
+
+	// simulate server crash or cacle
+	laneLog.Logger.Infoln("simulate server crash or cancle ")
+	// use cancel func
+	for _, f := range cancles {
+		f()
+	}
+
+	// check node
+	laneLog.Logger.Infoln("after cancle-immidiately")
+	nodes, err = client.GetNode(ck, "comet")
+	if err != nil {
+		laneLog.Logger.Fatalln(err)
+	}
+	if len(nodes) == 0 {
+		laneLog.Logger.Infoln("no node")
+	}
+	for _, n := range nodes {
+		laneLog.Logger.Infof("get nodes:%+v", n)
+	}
+
+	// check node
+	time.Sleep(time.Second * 6)
+	laneLog.Logger.Infoln("after cancle 6 second")
+	nodes, err = client.GetNode(ck, "comet")
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
