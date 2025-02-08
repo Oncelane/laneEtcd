@@ -122,10 +122,11 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 			if err != nil {
 				laneLog.Logger.Fatalln(err)
 			}
-			value = make([][]byte, len(ret))
+			value = make([][]byte, 0, len(ret))
 			for i := range ret {
 				var buf bytes.Buffer
-				gob.NewEncoder(&buf).Encode(&value[i])
+				gob.NewEncoder(&buf).Encode(&ret[i])
+				value = append(value, buf.Bytes())
 				// buf.Reset()
 			}
 		case pb.OpType_GetKVs:
@@ -133,10 +134,11 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 			if err != nil {
 				laneLog.Logger.Fatalln(err)
 			}
-			value = make([][]byte, len(ret))
+			value = make([][]byte, 0, len(ret))
 			for i := range ret {
 				var buf bytes.Buffer
-				gob.NewEncoder(&buf).Encode(&value[i])
+				gob.NewEncoder(&buf).Encode(&ret[i])
+				value = append(value, buf.Bytes())
 				// buf.Reset()
 			}
 		}

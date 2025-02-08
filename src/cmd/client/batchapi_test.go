@@ -1,6 +1,8 @@
 package client_test
 
 import (
+	"bytes"
+	"encoding/gob"
 	"strconv"
 	"testing"
 	"time"
@@ -103,6 +105,27 @@ func TestKvs(t *testing.T) {
 		laneLog.Logger.Fatalln(err)
 	}
 
+}
+
+func TestSlice(t *testing.T) {
+	value := make([][]byte, 0)
+	var buf bytes.Buffer
+	for i := range 3 {
+		gob.NewEncoder(&buf).Encode(i)
+		value = append(value, buf.Bytes())
+		laneLog.Logger.Infof("%p ", value[i])
+		buf.Reset()
+	}
+	laneLog.Logger.Infof("hack\n")
+	value = make([][]byte, 0, 3)
+	tmp := make([]byte, 0, 64)
+	for i := range 3 {
+		var buf = bytes.NewBuffer(tmp)
+		gob.NewEncoder(buf).Encode(i)
+		value = append(value, buf.Bytes())
+		laneLog.Logger.Infof("%p ", value[i])
+		tmp = tmp[:0]
+	}
 }
 
 // func BenchmarkSingleApi(t *testing.B) {
