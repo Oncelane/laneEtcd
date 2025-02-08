@@ -5,8 +5,8 @@ import (
 	"encoding/gob"
 	"unsafe"
 
+	"github.com/Oncelane/laneEtcd/src/common"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
-	"github.com/Oncelane/laneEtcd/src/pkg/trie"
 )
 
 type Op struct {
@@ -15,7 +15,7 @@ type Op struct {
 	OpType   int32 //请求/操作类型
 	Key      string
 	OriValue []byte
-	Entry    trie.Entry
+	Entry    common.Entry
 	// DeadTIme int64
 }
 

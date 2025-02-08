@@ -56,9 +56,12 @@ enum OpType {
   PutT = 1;
   AppendT = 2;
   DelT = 3;
-  BatchT = 4;
-  CAST = 5;
-  EmptyT = 6; // indicate a empty log only use to update leader commitIndex
+  DelWithPrefix = 4;
+  BatchT = 5;
+  CAST = 6;
+  EmptyT = 7; // indicate a empty log only use to update leader commitIndex
+  GetKeys = 8;
+  GetKVs = 9;
 }
 // Put or Append
 message PutAppendArgs {
@@ -66,7 +69,7 @@ message PutAppendArgs {
   bytes Value = 2;
   int64 DeadTime = 3;
   bytes OriValue = 4;
-  int32 Op = 5; // "Put" or "Append"
+  int32 Op = 5; // "Put" or "Append" or "Del" or "DelWithPrefix"
                 // You'll have to add definitions here.
                 // Field names must start with capital
                 // letters, otherwise RPC will break.
@@ -82,10 +85,12 @@ message PutAppendReply {
 
 message GetArgs {
   string Key = 1;
-  // You'll have to add definitions here.
   int64 ClientId = 2;
   int32 LatestOffset = 3;
-  bool withPrefix = 4;
+  bool WithPrefix = 4;
+  int32 PageSize = 5;
+  int32 PageIndex = 6;
+  OpType Op = 7;
 }
 
 message GetReply {

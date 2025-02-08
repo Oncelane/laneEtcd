@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/common"
+	buntdbx "github.com/Oncelane/laneEtcd/src/pkg/buntDBX"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 	"github.com/Oncelane/laneEtcd/src/raft"
-
-	"github.com/Oncelane/laneEtcd/src/pkg/trie"
 
 	"google.golang.org/grpc"
 )
@@ -38,7 +38,7 @@ type KVServer struct {
 	//lastInclude
 	lastIncludeIndex int
 	//log state machine
-	kvMap *trie.TrieX
+	db common.DB
 
 	//缓存的log, seq->index,reply
 	duplicateMap map[int64]duplicateType
@@ -97,21 +97,50 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	defer kv.mu.Unlock()
 	//跟raft层之间的同步问题，raft刚当选leader的时候，还没有
 
-	var value [][]byte
-	if args.WithPrefix {
-		entrys := kv.kvMap.GetEntryWithPrefix(args.Key)
-		value = make([][]byte, 0, len(entrys))
-		for _, e := range entrys {
-			value = append(value, e.Value)
-		}
-	} else {
-		v, ok := kv.kvMap.GetEntry(args.Key)
-		if ok {
-			value = append(value, v.Value)
-		}
-	}
-
 	if kv.lastAppliedIndex >= readLastIndex && kv.rf.GetLeader() && term == kv.rf.GetTerm() {
+		var value [][]byte
+		switch args.Op {
+		case pb.OpType_GetT:
+			if args.WithPrefix {
+				entrys, err := kv.db.GetEntryWithPrefix(args.Key)
+				if err != nil {
+					laneLog.Logger.Fatalf("database GetEntryWithPrefix faild:%s", err)
+				}
+
+				value = make([][]byte, 0, len(entrys))
+				for _, e := range entrys {
+					value = append(value, e.Value)
+				}
+			} else {
+				v, err := kv.db.GetEntry(args.Key)
+				if err != common.ErrNotFound {
+					value = append(value, v.Value)
+				}
+			}
+		case pb.OpType_GetKeys:
+			ret, err := kv.db.Keys(int(args.PageSize), int(args.PageIndex))
+			if err != nil {
+				laneLog.Logger.Fatalln(err)
+			}
+			value = make([][]byte, len(ret))
+			for i := range ret {
+				var buf bytes.Buffer
+				gob.NewEncoder(&buf).Encode(&value[i])
+				// buf.Reset()
+			}
+		case pb.OpType_GetKVs:
+			ret, err := kv.db.KVs(int(args.PageSize), int(args.PageIndex))
+			if err != nil {
+				laneLog.Logger.Fatalln(err)
+			}
+			value = make([][]byte, len(ret))
+			for i := range ret {
+				var buf bytes.Buffer
+				gob.NewEncoder(&buf).Encode(&value[i])
+				// buf.Reset()
+			}
+		}
+
 		if len(value) == 0 {
 			reply.Err = ErrNoKey
 			return
@@ -126,7 +155,7 @@ func (kv *KVServer) Get(_ context.Context, args *pb.GetArgs) (reply *pb.GetReply
 	}
 
 	// laneLog.Logger.Infof("server [%d] [Get] [NoKey] the get args[%v] reply[%v]", kv.me, args, reply)
-	// laneLog.Logger.Infof("server [%d] [map] -> %v", kv.me, kv.kvMap)
+	// laneLog.Logger.Infof("server [%d] [map] -> %v", kv.me, kv.db)
 
 	return reply, nil
 }
@@ -157,7 +186,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 		OpType:   args.Op,
 		Key:      args.Key,
 		OriValue: args.OriValue,
-		Entry: trie.Entry{
+		Entry: common.Entry{
 			Value:    args.Value,
 			DeadTime: args.DeadTime,
 		},
@@ -266,7 +295,7 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 }
 
 // state machine
-// 将value重新转换为 Op，添加到本地kvMap中
+// 将value重新转换为 Op，添加到本地db中
 func (kv *KVServer) HandleApplych() {
 	for !kv.killed() {
 		select {
@@ -308,7 +337,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		return
 	}
 	if OP.Offset <= kv.duplicateMap[OP.ClientId].Offset {
-		laneLog.Logger.Infof("⛔server [%d] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, OP, kv.lastAppliedIndex, kv.kvMap)
+		laneLog.Logger.Infof("⛔server [%d] [%v] lastapplied[%v]find in the cache and discard %v", kv.me, OP, kv.lastAppliedIndex, kv.db)
 		return
 	}
 	kv.duplicateMap[OP.ClientId] = duplicateType{
@@ -319,12 +348,16 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		//更新状态机
 		//有可能有多个start重复执行，所以这一步要检验重复
 
-		kv.kvMap.PutEntry(OP.Key, OP.Entry)
-		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s,%s] [map] -> %v", kv.me, op_type.Key, op_type.Value, kv.kvMap)
+		err := kv.db.PutEntry(OP.Key, OP.Entry)
+		if err != nil {
+			laneLog.Logger.Fatalf("database putEntry faild:%s", err)
+		}
+
+		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s,%s] [map] -> %v", kv.me, op_type.Key, op_type.Value, kv.db)
 		// laneLog.Logger.Infof("server [%d] [Update] [Put]->[%s : %s] ", kv.me, op_type.Key, op_type.Value)
 	case int32(pb.OpType_AppendT):
 
-		ori, _ := kv.kvMap.GetEntry(OP.Key)
+		ori, _ := kv.db.GetEntry(OP.Key)
 		var buffer bytes.Buffer
 
 		// 写入数据
@@ -333,23 +366,28 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 
 		// 获取拼接结果
 		result := buffer.Bytes()
-		kv.kvMap.PutEntry(OP.Key, trie.Entry{
+		err := kv.db.PutEntry(OP.Key, common.Entry{
 			Value:    result,
 			DeadTime: OP.Entry.DeadTime,
 		})
+		if err != nil {
+			laneLog.Logger.Fatalf("database putEntry faild:%s", err)
+		}
 		// laneLog.Logger.Infof("server [%d] [Update] [Append]->[%s : %s]", kv.me, op_type.Key, op_type.Value)
 
 	case int32(pb.OpType_DelT):
+		kv.db.Del(OP.Key)
 
-		kv.kvMap.Del(OP.Key)
+	case int32(pb.OpType_DelWithPrefix):
+		kv.db.DelWithPrefix(OP.Key)
 
 	case int32(pb.OpType_CAST):
-		ori, _ := kv.kvMap.GetEntry(OP.Key)
+		ori, _ := kv.db.GetEntry(OP.Key)
 		if bytes.Equal(ori.Value, OP.OriValue) {
 			if len(OP.Entry.Value) == 0 {
-				kv.kvMap.Del(OP.Key)
+				kv.db.Del(OP.Key)
 			} else {
-				kv.kvMap.PutEntry(OP.Key, OP.Entry)
+				kv.db.PutEntry(OP.Key, OP.Entry)
 			}
 			kv.duplicateMap[OP.ClientId] = duplicateType{
 				Offset:    OP.Offset,
@@ -363,6 +401,7 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 	case int32(pb.OpType_BatchT):
 		var ops []raft.Op
 		b := bytes.NewBuffer([]byte(OP.Entry.Value))
+		// laneLog.Logger.Debugln("receive batch data:", b.Bytes())
 		d := gob.NewDecoder(b)
 		err := d.Decode(&ops)
 		if err != nil {
@@ -371,9 +410,9 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 		for _, op := range ops {
 			switch op.OpType {
 			case int32(pb.OpType_PutT):
-				kv.kvMap.PutEntry(op.Key, op.Entry)
+				kv.db.PutEntry(op.Key, op.Entry)
 			case int32(pb.OpType_AppendT):
-				ori, _ := kv.kvMap.GetEntry(op.Key)
+				ori, _ := kv.db.GetEntry(op.Key)
 
 				var buffer bytes.Buffer
 
@@ -383,12 +422,14 @@ func (kv *KVServer) HandleApplychCommand(raft_type raft.ApplyMsg) {
 
 				// 获取拼接结果
 				result := buffer.Bytes()
-				kv.kvMap.PutEntry(op.Key, trie.Entry{
+				kv.db.PutEntry(op.Key, common.Entry{
 					Value:    result,
 					DeadTime: op.Entry.DeadTime,
 				})
 			case int32(pb.OpType_DelT):
-				kv.kvMap.Del(op.Key)
+				kv.db.Del(op.Key)
+			case int32(pb.OpType_DelWithPrefix):
+				kv.db.DelWithPrefix(op.Key)
 			}
 			// laneLog.Logger.Infof("exec batch op: %+v", op)
 		}
@@ -435,8 +476,11 @@ func (kv *KVServer) checkifNeedSnapshot(spanshotindex int) {
 	if err := enc.Encode(kv.duplicateMap); err != nil {
 		laneLog.Logger.Fatalf("snapshot duplicateMap encoder fail:%s", err)
 	}
-	kv.kvMap.MarshalEncoder(enc)
-
+	data, err := kv.db.SnapshotData()
+	if err != nil {
+		laneLog.Logger.Fatalf("database snapshotdata faild:%s", err)
+	}
+	enc.Encode(data)
 	//将状态机传了进去
 	kv.rf.Snapshot(spanshotindex, buf.Bytes())
 
@@ -444,11 +488,12 @@ func (kv *KVServer) checkifNeedSnapshot(spanshotindex int) {
 
 // 被动快照
 func (kv *KVServer) readPersist(data []byte) {
+
 	if data == nil || len(data) < 1 {
 		return
 	}
 	laneLog.Logger.Infof("server [%d] passive 📷 len of snapshotdate[%d] ", kv.me, len(data))
-	laneLog.Logger.Infof("server [%d] before map[%v]", kv.me, kv.kvMap)
+	laneLog.Logger.Infof("server [%d] before map[%v]", kv.me, kv.db)
 	r := bytes.NewBuffer(data)
 	d := gob.NewDecoder(r)
 
@@ -457,24 +502,17 @@ func (kv *KVServer) readPersist(data []byte) {
 		laneLog.Logger.Fatalf("decode err:%s", err)
 	}
 
-	newKvmap := trie.NewTrieX()
-	keys := make([]string, 0)
-	values := make([]string, 0)
-	err := d.Decode(&keys)
+	newdb := buntdbx.NewDB()
+	dbData := make([]byte, 0)
+	err := d.Decode(&dbData)
 	if err != nil {
 		laneLog.Logger.Fatalln("read persiset err", err)
 	}
-	err = d.Decode(&values)
-	if err != nil {
-		laneLog.Logger.Fatalln("read persiset err", err)
-	}
-	for i := range keys {
-		newKvmap.Put(keys[i], values[i])
-	}
-	kv.kvMap = newKvmap
+	newdb.InstallSnapshotData(dbData)
+	kv.db = newdb
 	kv.duplicateMap = duplicateMap
 
-	laneLog.Logger.Infof("server [%d] after map[%v]", kv.me, kv.kvMap)
+	laneLog.Logger.Infof("server [%d] after map[%v]", kv.me, kv.db)
 
 }
 
@@ -523,7 +561,7 @@ func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, 
 		applyCh:          make(chan raft.ApplyMsg),
 		lastAppliedIndex: 0,
 		lastIncludeIndex: 0,
-		kvMap:            trie.NewTrieX(),
+		db:               buntdbx.NewDB(),
 		lastIndexCh:      make(chan int),
 		duplicateMap:     make(map[int64]duplicateType),
 	}

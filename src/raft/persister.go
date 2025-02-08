@@ -82,17 +82,10 @@ func (ps *Persister) Save(raftstate []byte, snapshot []byte) {
 		}
 	}
 	if _, err := os.Stat(snapshotTmpPath); os.IsExist(err) {
-		err := os.Remove(raftstateTmpPath)
+		err := os.Remove(snapshotTmpPath)
 		if err != nil {
 			laneLog.Logger.Errorf("could not remove tmp file: %v", err)
 		}
-	}
-	if _, err := os.Stat(snapshotTmpPath); os.IsNotExist(err) {
-		file, err := os.Create(snapshotTmpPath)
-		if err != nil {
-			laneLog.Logger.Errorf("could not create file: %v", err)
-		}
-		file.Close()
 	}
 	if err := os.WriteFile(raftstateTmpPath, raftstate, 0644); err != nil {
 		laneLog.Logger.Panicln("write faild", err)

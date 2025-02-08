@@ -13,11 +13,16 @@ func TestWatchDog(t *testing.T) {
 
 	go func() {
 		for {
-			laneLog.Logger.Infoln(ck.Get("watchdog"))
+			ret, err := ck.Get("watchdog")
+			if err != nil {
+				laneLog.Logger.Fatalln(err)
+			}
+			laneLog.Logger.Infoln(string(ret))
 			time.Sleep(time.Millisecond * 500)
 		}
 	}()
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 2)
+	laneLog.Logger.Infoln("after cancel")
 	cancel()
 	time.Sleep(time.Second * 5)
 }

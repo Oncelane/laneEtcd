@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/common"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
-	"github.com/Oncelane/laneEtcd/src/pkg/trie"
 	"github.com/Oncelane/laneEtcd/src/raft"
 )
 
@@ -26,7 +26,6 @@ func (p *Pipe) Marshal() []byte {
 	b := new(bytes.Buffer)
 	e := gob.NewEncoder(b)
 	e.Encode(p.ops)
-	// laneLog.Logger.Debugln("batch write:", b.Bytes())
 	return b.Bytes()
 }
 
@@ -48,14 +47,25 @@ func (p *Pipe) Delete(key string) error {
 	}
 	return p.append(op)
 }
+
+func (p *Pipe) DeleteWithPrefix(prefix string) error {
+	op := raft.Op{
+		Key:    prefix,
+		OpType: int32(pb.OpType_DelWithPrefix),
+	}
+	return p.append(op)
+}
 func (p *Pipe) Put(key string, value []byte, TTL time.Duration) error {
 	op := raft.Op{
 		Key: key,
-		Entry: trie.Entry{
+		Entry: common.Entry{
 			Value:    value,
-			DeadTime: time.Now().Add(TTL).UnixMilli(),
+			DeadTime: 0,
 		},
 		OpType: int32(pb.OpType_PutT),
+	}
+	if TTL != 0 {
+		op.Entry.DeadTime = time.Now().Add(TTL).UnixMilli()
 	}
 	return p.append(op)
 }
@@ -63,7 +73,7 @@ func (p *Pipe) Put(key string, value []byte, TTL time.Duration) error {
 func (p *Pipe) Append(key string, value []byte, TTL time.Duration) error {
 	op := raft.Op{
 		Key: key,
-		Entry: trie.Entry{
+		Entry: common.Entry{
 			Value:    value,
 			DeadTime: time.Now().Add(TTL).UnixMilli(),
 		},

@@ -6,3 +6,8 @@ infra*
 
 *pConfig/
 
+.excalidraw*
+
+go.sum
+
+*.db

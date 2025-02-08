@@ -1,13 +1,16 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/gob"
 	"math/big"
 	"sync"
 	"time"
 
 	"github.com/Oncelane/laneEtcd/proto/pb"
+	"github.com/Oncelane/laneEtcd/src/common"
 	"github.com/Oncelane/laneEtcd/src/kvraft"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneConfig"
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
@@ -76,6 +79,39 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 	return ck
 }
 
+func (ck *Clerk) doGetValue(key string, withPrefix bool) ([][]byte, error) {
+	args := pb.GetArgs{
+		Key:          key,
+		ClientId:     ck.clientId,
+		LatestOffset: ck.LatestOffset,
+		WithPrefix:   withPrefix,
+		Op:           pb.OpType_GetT,
+	}
+	return ck.read(&args)
+}
+
+func (ck *Clerk) doGetKV(key string, withPrefix bool, op pb.OpType, pageSize, pageIndex int) ([]common.Pair, error) {
+	args := pb.GetArgs{
+		Key:          key,
+		ClientId:     ck.clientId,
+		LatestOffset: ck.LatestOffset,
+		WithPrefix:   withPrefix,
+		PageSize:     int32(pageSize),
+		PageIndex:    int32(pageIndex),
+		Op:           op,
+	}
+	datas, err := ck.read(&args)
+	if err != nil {
+		return nil, err
+	}
+	rets := make([]common.Pair, len(datas))
+	for i := range rets {
+		d := gob.NewDecoder(bytes.NewBuffer(datas[i]))
+		d.Decode(&rets[i])
+	}
+	return rets, nil
+}
+
 // fetch the current value for a key.
 // returns "" if the key does not exist.
 // keeps trying forever in the face of all other errors.
@@ -87,20 +123,13 @@ func MakeClerk(conf laneConfig.Clerk) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 
-func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
+func (ck *Clerk) read(args *pb.GetArgs) ([][]byte, error) {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
-	args := pb.GetArgs{
-		Key:          key,
-		ClientId:     ck.clientId,
-		LatestOffset: ck.LatestOffset,
-		WithPrefix:   withPrefix,
-	}
 	totalCount := 0
 	count := 0
 	lastSendLocalId := -1
-
 	for {
 		totalCount++
 		if totalCount > 2*len(ck.servers)*3 {
@@ -128,7 +157,7 @@ func (ck *Clerk) doGet(key string, withPrefix bool) ([][]byte, error) {
 			time.Sleep(time.Second)
 			continue
 		}
-		reply, err := ck.servers[ck.nextSendLocalId].Conn.Get(context.Background(), &args)
+		reply, err := ck.servers[ck.nextSendLocalId].Conn.Get(context.Background(), args)
 
 		//根据reply初始化一下本地server表
 
@@ -301,6 +330,10 @@ func (ck *Clerk) Delete(key string) error {
 	return ck.write(key, nil, nil, 0, int32(pb.OpType_DelT))
 }
 
+func (ck *Clerk) DeleteWithPrefix(prefix string) error {
+	return ck.write(prefix, nil, nil, 0, int32(pb.OpType_DelWithPrefix))
+}
+
 func (ck *Clerk) CAS(key string, origin, dest []byte, TTL time.Duration) (bool, error) {
 	err := ck.write(key, dest, origin, TTL, int32(pb.OpType_CAST))
 	if err != nil {
@@ -323,7 +356,7 @@ func (ck *Clerk) Pipeline() *Pipe {
 }
 
 func (ck *Clerk) Get(key string) ([]byte, error) {
-	r, err := ck.doGet(key, false)
+	r, err := ck.doGetValue(key, false)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +367,7 @@ func (ck *Clerk) Get(key string) ([]byte, error) {
 }
 
 func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
-	r, err := ck.doGet(key, true)
+	r, err := ck.doGetValue(key, true)
 	if err != nil {
 		return nil, err
 	}
@@ -344,14 +377,29 @@ func (ck *Clerk) GetWithPrefix(key string) ([][]byte, error) {
 	return nil, kvraft.ErrNil
 }
 
-// TODO 当TTL不为零时，启动watchDog机制
+func (ck *Clerk) Keys() ([]common.Pair, error) {
+	return ck.doGetKV("", true, pb.OpType_GetKeys, 0, 0)
+}
+
+func (ck *Clerk) KVs() ([]common.Pair, error) {
+	return ck.doGetKV("", true, pb.OpType_GetKVs, 0, 0)
+}
+
+func (ck *Clerk) KeysWithPage(pageSize, pageIndex int) ([]common.Pair, error) {
+	return ck.doGetKV("", true, pb.OpType_GetKeys, pageSize, pageIndex)
+}
+
+func (ck *Clerk) KVsWithPage(pageSize, pageIndex int) ([]common.Pair, error) {
+	return ck.doGetKV("", true, pb.OpType_GetKVs, pageSize, pageIndex)
+}
+
+// TODO 当TTL为零时，启动watchDog机制
 func (ck *Clerk) Lock(key string, TTL time.Duration) (id string, err error) {
 	r, err := uuid.NewRandom()
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 		return "", err
 	}
-
 	ok, err := ck.CAS(key, nil, []byte(r.String()), TTL)
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
