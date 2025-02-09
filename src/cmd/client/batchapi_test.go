@@ -3,8 +3,11 @@ package client_test
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
+	"os"
 	"strconv"
 	"testing"
+	"text/tabwriter"
 	"time"
 
 	"github.com/Oncelane/laneEtcd/src/kvraft"
@@ -56,6 +59,7 @@ func TestGetWithPrefix(t *testing.T) {
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
+
 	rowdata, err := ck.GetWithPrefix("key")
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
@@ -63,6 +67,7 @@ func TestGetWithPrefix(t *testing.T) {
 	if len(rowdata) != 3 {
 		laneLog.Logger.Fatalln("wrong count")
 	}
+
 	ck.DeleteWithPrefix("key")
 	_, err = ck.GetWithPrefix("key")
 	if err != kvraft.ErrNil {
@@ -77,30 +82,37 @@ func TestKvs(t *testing.T) {
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
-	err = ck.Put("key:2", []byte("2"), 0)
+	err = ck.Put("key:2", []byte("2"), time.Second)
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
 	pipe := ck.Pipeline()
-	pipe.Put("key:3", []byte("3"), 0)
+	pipe.Put("key:3", []byte("3"), time.Hour)
 	err = pipe.Exec()
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
-	rowdata, err := ck.Keys()
+	pairs, err := ck.KVs()
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
-	if len(rowdata) != 3 {
+	if len(pairs) != 3 {
 		laneLog.Logger.Fatalln("wrong count")
 	}
-	for i := range rowdata {
-		if string(rowdata[i].Key) != "key:"+strconv.Itoa(i+1) {
-			laneLog.Logger.Fatalln("wrong key:", string(rowdata[i].Key), "expect:", "key:"+strconv.Itoa(i+1))
+	tab := tabwriter.NewWriter(os.Stdout, 15, 0, 1, ' ', 0)
+	fmt.Fprintln(tab, "key\tvalue\tdeadtime\t")
+	for i := range pairs {
+		key := pairs[i].Key
+		value := pairs[i].Entry.Value
+		deadtime := pairs[i].Entry.DeadTime
+		if key != "key:"+strconv.Itoa(i+1) {
+			laneLog.Logger.Fatalln("wrong key:", key, "expect:", "key:"+strconv.Itoa(i+1))
 		}
+		fmt.Fprintf(tab, "%s\t%s\t%d\t\n", key, value, deadtime)
 	}
+	tab.Flush()
 	ck.DeleteWithPrefix("key")
-	_, err = ck.Keys()
+	_, err = ck.KVs()
 	if err != kvraft.ErrNil {
 		laneLog.Logger.Fatalln(err)
 	}
@@ -126,6 +138,23 @@ func TestSlice(t *testing.T) {
 		laneLog.Logger.Infof("%p ", value[i])
 		tmp = tmp[:0]
 	}
+}
+
+func TestPrintKeys(t *testing.T) {
+	pairs, err := ck.KVs()
+	if err != nil {
+		if err != kvraft.ErrNil {
+			laneLog.Logger.Fatalln(err)
+		}
+		laneLog.Logger.Infoln("no kv exist")
+	}
+	tab := tabwriter.NewWriter(os.Stdout, 15, 0, 1, ' ', 0)
+	fmt.Fprintln(tab, "Key\tValue\tDeadtime\t")
+	for i := range pairs {
+		fmt.Fprintf(tab, "%s\t%s\t%d\t\n", pairs[i].Key, pairs[i].Entry.Value, pairs[i].Entry.DeadTime)
+	}
+	tab.Flush()
+
 }
 
 // func BenchmarkSingleApi(t *testing.B) {

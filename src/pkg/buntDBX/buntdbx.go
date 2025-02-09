@@ -62,13 +62,6 @@ func (d *DB) Get(key string) (ret []byte, err error) {
 	return
 }
 
-func (d *DB) Put(key string, value []byte, DeadTime int64) error {
-	return d.db.Update(func(tx *buntdb.Tx) error {
-
-		return nil
-	})
-}
-
 func (d *DB) GetWithPrefix(prefix string) (ret [][]byte, err error) {
 	ret = make([][]byte, 0, 1)
 	err = d.db.View(func(tx *buntdb.Tx) error {
@@ -113,6 +106,27 @@ func (d *DB) GetEntryWithPrefix(prefix string) (ret []common.Entry, err error) {
 		})
 	})
 	return
+}
+
+func (d *DB) Put(key string, value []byte, DeadTime int64) error {
+	return d.db.Update(func(tx *buntdb.Tx) error {
+		if DeadTime != 0 {
+			deadTime := time.UnixMilli(DeadTime)
+			if deadTime.Before(time.Now()) {
+				return nil
+			}
+			_, _, err := tx.Set(key, common.BytesToString(value), &buntdb.SetOptions{Expires: true, TTL: time.Until(deadTime)})
+			if err != nil {
+				return err
+			}
+		} else {
+			_, _, err := tx.Set(key, common.BytesToString(value), nil)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (d *DB) PutEntry(key string, entry common.Entry) error {

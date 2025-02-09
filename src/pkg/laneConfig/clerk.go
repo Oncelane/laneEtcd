@@ -11,7 +11,7 @@ func (c *Clerk) Default() {
 func DefaultClerk() Clerk {
 	return Clerk{
 		EtcdAddrs: []string{
-			"127.0.0.1:32300", "127.0.0.1:32301", "127.0.0.1:32302",
+			"127.0.0.1:51240", "127.0.0.1:51241", "127.0.0.1:51242",
 		},
 	}
 }
