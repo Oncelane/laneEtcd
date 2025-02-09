@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -42,6 +43,7 @@ func (g *Gateway) Run() error {
 	r.GET("/keysWithPrefix", g.getWithPrefix)
 	r.GET("/kvs", g.kvs)
 	r.POST("/put", g.put)
+	r.POST("/putCAS", g.putCAS)
 	r.DELETE("/key", g.del)
 	r.DELETE("/keysWithPrefix", g.delWithPrefix)
 	return r.Run(g.conf.Port)
@@ -101,7 +103,46 @@ type Pair struct {
 }
 
 func (g *Gateway) put(c *gin.Context) {
-	var pair Pair
+	var pairs []Pair
+	err := c.ShouldBind(&pairs)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		return
+	}
+	var ttl time.Duration
+	pipe := g.ck.Pipeline()
+
+	for i := range pairs {
+		if pairs[i].DeadTime == 0 {
+			ttl = 0
+		} else {
+			deadTimestamp := time.UnixMilli(pairs[i].DeadTime)
+			if time.Now().After(deadTimestamp) {
+				c.JSON(http.StatusOK, gin.H{"msg": "ok(ignore)"})
+				continue
+			}
+			ttl = time.Until(deadTimestamp)
+		}
+		pipe.Put(pairs[i].Key, common.StringToBytes(pairs[i].Value), ttl)
+	}
+	err = pipe.Exec()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"msg": "ok"})
+
+}
+
+type PairCAS struct {
+	Key      string
+	Value    string
+	OriValue string
+	DeadTime int64
+}
+
+func (g *Gateway) putCAS(c *gin.Context) {
+	var pair PairCAS
 	err := c.ShouldBind(&pair)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
@@ -118,13 +159,12 @@ func (g *Gateway) put(c *gin.Context) {
 		}
 		ttl = time.Until(deadTimestamp)
 	}
-	err = g.ck.Put(pair.Key, common.StringToBytes(pair.Value), ttl)
+	ok, err := g.ck.CAS(pair.Key, common.StringToBytes(pair.OriValue), common.StringToBytes(pair.Value), ttl)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"msg": "ok"})
-
+	c.JSON(http.StatusOK, gin.H{"msg": fmt.Sprintf("%t", ok)})
 }
 
 func (g *Gateway) del(c *gin.Context) {

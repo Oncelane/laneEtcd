@@ -322,6 +322,7 @@ func (ck *Clerk) changeNextSendId() {
 func (ck *Clerk) Put(key string, value []byte, TTL time.Duration) error {
 	return ck.write(key, value, nil, TTL, int32(pb.OpType_PutT))
 }
+
 func (ck *Clerk) Append(key string, value []byte, TTL time.Duration) error {
 	return ck.write(key, value, nil, TTL, int32(pb.OpType_AppendT))
 }
