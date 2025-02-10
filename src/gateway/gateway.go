@@ -36,16 +36,18 @@ func NewGateway(conf laneConfig.Gateway) *Gateway {
 	}
 }
 
+// realurl = baseUrl + '/keys' | '/put' act...
+// default baseUrl = '/laneEtcd'
 func (g *Gateway) Run() error {
 	r := gin.Default()
-	r.GET("/keys", g.keys)
-	r.GET("/key", g.get)
-	r.GET("/keysWithPrefix", g.getWithPrefix)
-	r.GET("/kvs", g.kvs)
-	r.POST("/put", g.put)
-	r.POST("/putCAS", g.putCAS)
-	r.DELETE("/key", g.del)
-	r.DELETE("/keysWithPrefix", g.delWithPrefix)
+	r.GET(g.conf.BaseUrl+"/keys", g.keys)
+	r.GET(g.conf.BaseUrl+"/key", g.get)
+	r.GET(g.conf.BaseUrl+"/keysWithPrefix", g.getWithPrefix)
+	r.GET(g.conf.BaseUrl+"/kvs", g.kvs)
+	r.POST(g.conf.BaseUrl+"/put", g.put)
+	r.POST(g.conf.BaseUrl+"/putCAS", g.putCAS)
+	r.DELETE(g.conf.BaseUrl+"/key", g.del)
+	r.DELETE(g.conf.BaseUrl+"/keysWithPrefix", g.delWithPrefix)
 	return r.Run(g.conf.Port)
 }
 
