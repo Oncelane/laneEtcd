@@ -31,7 +31,7 @@ func Init(Path string, conf LaneConfig) {
 		if os.IsNotExist(err) {
 			conf.Default()
 			WriteLocal(Path, conf)
-			laneLog.Logger.Fatalln("please check for the config.yml if needed to be modified, then run again")
+			laneLog.Logger.Warnf("please check for the %s if needed to be modified, then run again\n", Path)
 		} else {
 			laneLog.Logger.Fatalln("config wrong err:", err)
 		}

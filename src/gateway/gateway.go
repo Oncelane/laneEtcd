@@ -51,6 +51,17 @@ func (g *Gateway) Run() error {
 	return r.Run(g.conf.Port)
 }
 
+func (g *Gateway) LoadRouter(r *gin.Engine) {
+	r.GET(g.conf.BaseUrl+"/keys", g.keys)
+	r.GET(g.conf.BaseUrl+"/key", g.get)
+	r.GET(g.conf.BaseUrl+"/keysWithPrefix", g.getWithPrefix)
+	r.GET(g.conf.BaseUrl+"/kvs", g.kvs)
+	r.POST(g.conf.BaseUrl+"/put", g.put)
+	r.POST(g.conf.BaseUrl+"/putCAS", g.putCAS)
+	r.DELETE(g.conf.BaseUrl+"/key", g.del)
+	r.DELETE(g.conf.BaseUrl+"/keysWithPrefix", g.delWithPrefix)
+}
+
 func (g *Gateway) keys(c *gin.Context) {
 	var pairs []Pair
 	switch c.Query("type") {

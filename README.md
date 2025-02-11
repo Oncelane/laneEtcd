@@ -1,32 +1,110 @@
 # laneETCD
 
-脱离 mit6.5840（前 mit6.840）实现而来，实现 raft 强一致性分布式共识算法，使用 kv 键值对外提供强一致的服务注册等服务
+独立于 MIT6.5840 的类 Etcd 分布式 kv 数据库，底层实现 raft 强一致性分布式共识算法，提供高可用的服务注册等服务
 
-已实现：
+底层数据库：buntDB，支持 pattern 查询和删除，支持硬盘持久化
+
+- get/delete by prefix：前缀范围查询和删除
+- TTL-key：键值对过期时间
+- MetaTags：元标签，可用于扩展版本控制，流量染色，负载均衡
+- pipeline：使用类似 redis 的 pipeline 语义进行批量操作
+- CAS api：使用 CAS 语义进行 Set 操作；未来计划封装成 SetEX，SetNX 等接口；
+- Lock api：分布式锁，可以直接调用客户端提供的 api 直接使用分布式锁了，已配合 watchDog 租约机制，默认应用程序意外关闭，断开心跳连接后五秒自动销毁 lock；
+
+特性：
 
 - 集群部署
 - snapshot 持久化，崩溃恢复
 - readIndex，读请求不需要记录日志
-- 压缩前缀树存储
-- 支持前缀范围查询
-- TTL-key：键值对支持过期时间
-- MetaTags：支持元标签，可用于扩展版本控制，流量染色，负载均衡
-- pipeline：可使用类似 redis 的 pipeline 进行批量操作了
-- CAS api：可使用 CAS 语义进行 Set 操作了；未来计划封装成 SetEX，SetNX 等接口；
-- Lock api：分布式锁，可以直接调用客户端提供的 api 直接使用分布式锁了；未来计划还将实现 watchDog 租约机制；
+- WatchDog: 心跳保活机制，及时发现失联服务
 - CPU 占用率优化，将算法中的一些轮询机制改为通知机制
-- 心跳保活机制，及时发现失联服务
 
-暂未实现：
+未来实现：
 
-- 动态集群
-- 租约机制，从节点读
+- 增加脚本功能，可以从网页端上传 lua 脚本，执行自动逻辑
+- 非强一致性读：租约机制，从节点读
 - duplicateMap 内存占用问题，即 clientId 租期机制
-- 定时扫描删除过期 TTL
 
 下一阶段目标：
 
 使用新的分布式公式协议`epaxos`重写共识算法层
+
+## 构建
+
+```sh
+git clone https://github.com/Oncelane/laneEtcd.git
+cd laneEtcd
+make build
+make run
+## 第一次运行会生成配置文件，检查后再次make run 运行
+#  make run
+```
+
+## 调用 api
+
+提供 go client 和 go gateway 服务两种 api
+
+### 1. go 客户端：
+
+```sh
+cd src/cmd/client
+ls
+```
+
+client_test.go 为例，使用 client.MakeClerk 即可生成客户端
+
+```go
+func init() {
+	conf := laneConfig.Clerk{}
+	laneConfig.Init("config.yml", &conf)
+	// laneLog.Logger.Debugln("check conf", conf)
+	ck = client.MakeClerk(conf)
+}
+/*
+client api一览
+func (ck *client.Clerk) Append(key string, value []byte, TTL time.Duration) error
+func (ck *client.Clerk) CAS(key string, origin []byte, dest []byte, TTL time.Duration) (bool, error)
+func (ck *client.Clerk) Delete(key string) error
+func (ck *client.Clerk) DeleteWithPrefix(prefix string) error
+func (ck *client.Clerk) Get(key string) ([]byte, error)
+func (ck *client.Clerk) GetWithPrefix(key string) ([][]byte, error)
+func (ck *client.Clerk) KVs() ([]common.Pair, error)
+func (ck *client.Clerk) KVsWithPage(pageSize int, pageIndex int) ([]common.Pair, error)
+func (ck *client.Clerk) Keys() ([]common.Pair, error)
+func (ck *client.Clerk) KeysWithPage(pageSize int, pageIndex int) ([]common.Pair, error)
+func (ck *client.Clerk) Lock(key string, TTL time.Duration) (id string, err error)
+func (ck *client.Clerk) Pipeline() *client.Pipe
+func (ck *client.Clerk) Put(key string, value []byte, TTL time.Duration) error
+func (ck *client.Clerk) Unlock(key string, id string) (bool, error)
+func (ck *client.Clerk) WatchDog(key string, value []byte) (cancel func())
+*/
+```
+
+### 2. go gateway 提供 http 服务
+
+```go
+var gate *gateway.Gateway
+
+func init() {
+	var conf laneConfig.Gateway
+	laneConfig.Init("config.yml", &conf) // 在config中配置基础网址和ip，port等参数
+	gate = gateway.NewGateway(conf)
+}
+func main() {
+	gate.Run()
+}
+/*
+  http 接口一览
+	r.GET(g.conf.BaseUrl+"/keys", g.keys)
+	r.GET(g.conf.BaseUrl+"/key", g.get)
+	r.GET(g.conf.BaseUrl+"/keysWithPrefix", g.getWithPrefix)
+	r.GET(g.conf.BaseUrl+"/kvs", g.kvs)
+	r.POST(g.conf.BaseUrl+"/put", g.put)
+	r.POST(g.conf.BaseUrl+"/putCAS", g.putCAS)
+	r.DELETE(g.conf.BaseUrl+"/key", g.del)
+	r.DELETE(g.conf.BaseUrl+"/keysWithPrefix", g.delWithPrefix)
+*/
+```
 
 性能：
 
