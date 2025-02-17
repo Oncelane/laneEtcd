@@ -68,7 +68,7 @@ func (g *Gateway) keys(c *gin.Context) {
 	case "", "all":
 		cpairs, err := g.ck.Keys()
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+			c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 			return
 		}
 		pairs = make([]Pair, len(cpairs))
@@ -76,12 +76,12 @@ func (g *Gateway) keys(c *gin.Context) {
 			pairs[i].Key = cpairs[i].Key
 			pairs[i].DeadTime = cpairs[i].Entry.DeadTime
 		}
-		c.JSON(http.StatusOK, pairs)
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: pairs})
 
 	case "page":
 
 	default:
-		c.JSON(http.StatusOK, gin.H{"msg": "wrong type"})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "wrong type"}})
 	}
 }
 
@@ -91,7 +91,7 @@ func (g *Gateway) kvs(c *gin.Context) {
 	case "", "all":
 		cpairs, err := g.ck.KVs()
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+			c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 			return
 		}
 		pairs = make([]Pair, len(cpairs))
@@ -100,12 +100,12 @@ func (g *Gateway) kvs(c *gin.Context) {
 			pairs[i].Value = common.BytesToString(cpairs[i].Entry.Value)
 			pairs[i].DeadTime = cpairs[i].Entry.DeadTime
 		}
-		c.JSON(http.StatusOK, pairs)
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: pairs})
 
 	case "page":
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "wrong type"}})
 
 	default:
-		c.JSON(http.StatusOK, gin.H{"msg": "wrong type"})
 	}
 }
 
@@ -119,7 +119,7 @@ func (g *Gateway) put(c *gin.Context) {
 	var pairs []Pair
 	err := c.ShouldBind(&pairs)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
 	var ttl time.Duration
@@ -131,7 +131,7 @@ func (g *Gateway) put(c *gin.Context) {
 		} else {
 			deadTimestamp := time.UnixMilli(pairs[i].DeadTime)
 			if time.Now().After(deadTimestamp) {
-				c.JSON(http.StatusOK, gin.H{"msg": "ok(ignore)"})
+				c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "ok(ignore)"}})
 				continue
 			}
 			ttl = time.Until(deadTimestamp)
@@ -140,10 +140,10 @@ func (g *Gateway) put(c *gin.Context) {
 	}
 	err = pipe.Exec()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"msg": "ok"})
+	c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "ok"}})
 
 }
 
@@ -158,7 +158,7 @@ func (g *Gateway) putCAS(c *gin.Context) {
 	var pair PairCAS
 	err := c.ShouldBind(&pair)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
 	var ttl time.Duration
@@ -167,61 +167,61 @@ func (g *Gateway) putCAS(c *gin.Context) {
 	} else {
 		deadTimestamp := time.UnixMilli(pair.DeadTime)
 		if time.Now().After(deadTimestamp) {
-			c.JSON(http.StatusOK, gin.H{"msg": "ok(ignore)"})
+			c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "ok(ignore)"}})
 			return
 		}
 		ttl = time.Until(deadTimestamp)
 	}
 	ok, err := g.ck.CAS(pair.Key, common.StringToBytes(pair.OriValue), common.StringToBytes(pair.Value), ttl)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"msg": fmt.Sprintf("%t", ok)})
+	c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": fmt.Sprintf("%t", ok)}})
 }
 
 func (g *Gateway) del(c *gin.Context) {
 	key := c.Query("key")
 	err := g.ck.Delete(key)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"msg": "ok"})
+	c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "ok"}})
 }
 
 func (g *Gateway) delWithPrefix(c *gin.Context) {
 	prefix := c.Query("prefix")
 	err := g.ck.DeleteWithPrefix(prefix)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"msg": "ok"})
+	c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": "ok"}})
 }
 
 func (g *Gateway) get(c *gin.Context) {
 	key := c.Query("key")
 	value, err := g.ck.Get(key)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"value": Pair{
+	c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"value": Pair{
 		Value: common.BytesToString(value),
-	}, "msg": "ok"})
+	}, "msg": "ok"}})
 }
 
 func (g *Gateway) getWithPrefix(c *gin.Context) {
 	prefix := c.Query("prefix")
 	value, err := g.ck.GetWithPrefix(prefix)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"msg": err.Error()})
+		c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"msg": err.Error()}})
 		return
 	}
 	pairs := make([]Pair, len(value))
 	for i := range value {
 		pairs[i].Value = common.BytesToString(value[i])
 	}
-	c.JSON(http.StatusOK, gin.H{"value": pairs, "msg": "ok"})
+	c.JSON(http.StatusOK, common.Respond{Code: http.StatusOK, Data: gin.H{"value": pairs, "msg": "ok"}})
 }
