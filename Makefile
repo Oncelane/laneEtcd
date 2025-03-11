@@ -35,3 +35,6 @@ stop:
 clean:
 	rm -rf bin/etcd; \
 	mkdir -p bin/etcd/; \
+
+gen:
+	protoc --go_out=.. --go-grpc_out=.. --go-grpc_opt=require_unimplemented_servers=false -I. -Iproto proto/pb/pb.proto

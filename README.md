@@ -34,17 +34,43 @@
 ```sh
 git clone https://github.com/Oncelane/laneEtcd.git
 cd laneEtcd
+go mod tidy
 make build
 make run
 ## 第一次运行会生成配置文件，检查后再次make run 运行
 #  make run
 ```
 
+## 查看启动配置文件
+
+根目录下的config中自带三个成员的配置文件 config.yml,表示每个实例的启动设置
+
+配置默认可用不需要修改，若自行修改，需注意标识为unique的条目不能在集群成员配置中重复
+
+```yml
+
+addr: 127.0.0.1
+port: :51240 # unique 客户端与服务端通讯的grpc端口号
+rafts:
+  me: 0 # unique 有多少个
+  endpoints: # 服务端之间沟通使用的grpc端口号
+    - addr: 127.0.0.1
+      port: :32300
+    - addr: 127.0.0.1
+      port: :32301
+    - addr: 127.0.0.1
+      port: :32302
+databasepath: "data0" # unique
+maxraftstate: 100000 # snapshoot时机，当log数目达到此数目时进行快照，释放内存
+```
+
+
+
 ## 调用 api
 
-提供 go client 和 go gateway 服务两种 api
+提供 go client 和 go gateway 服务两种 api 方式
 
-### 1. go 客户端：
+### 方式1： go 客户端：
 
 ```sh
 cd src/cmd/client
@@ -60,8 +86,8 @@ func init() {
 	// laneLog.Logger.Debugln("check conf", conf)
 	ck = client.MakeClerk(conf)
 }
-/*
-client api一览
+
+// client api一览
 func (ck *client.Clerk) Append(key string, value []byte, TTL time.Duration) error
 func (ck *client.Clerk) CAS(key string, origin []byte, dest []byte, TTL time.Duration) (bool, error)
 func (ck *client.Clerk) Delete(key string) error
@@ -77,10 +103,10 @@ func (ck *client.Clerk) Pipeline() *client.Pipe
 func (ck *client.Clerk) Put(key string, value []byte, TTL time.Duration) error
 func (ck *client.Clerk) Unlock(key string, id string) (bool, error)
 func (ck *client.Clerk) WatchDog(key string, value []byte) (cancel func())
-*/
+
 ```
 
-### 2. go gateway 提供 http 服务
+### 方式2： go gateway 提供 http 服务
 
 ```go
 var gate *gateway.Gateway
@@ -93,20 +119,19 @@ func init() {
 func main() {
 	gate.Run()
 }
-/*
-  http 接口一览
-	r.GET(g.conf.BaseUrl+"/keys", g.keys)
-	r.GET(g.conf.BaseUrl+"/key", g.get)
-	r.GET(g.conf.BaseUrl+"/keysWithPrefix", g.getWithPrefix)
-	r.GET(g.conf.BaseUrl+"/kvs", g.kvs)
-	r.POST(g.conf.BaseUrl+"/put", g.put)
-	r.POST(g.conf.BaseUrl+"/putCAS", g.putCAS)
-	r.DELETE(g.conf.BaseUrl+"/key", g.del)
-	r.DELETE(g.conf.BaseUrl+"/keysWithPrefix", g.delWithPrefix)
-*/
+
+  // http 接口一览
+r.GET(g.conf.BaseUrl+"/keys", g.keys)
+r.GET(g.conf.BaseUrl+"/key", g.get)
+r.GET(g.conf.BaseUrl+"/keysWithPrefix", g.getWithPrefix)
+r.GET(g.conf.BaseUrl+"/kvs", g.kvs)
+r.POST(g.conf.BaseUrl+"/put", g.put)
+r.POST(g.conf.BaseUrl+"/putCAS", g.putCAS)
+r.DELETE(g.conf.BaseUrl+"/key", g.del)
+r.DELETE(g.conf.BaseUrl+"/keysWithPrefix", g.delWithPrefix)
 ```
 
-性能：
+## 性能：
 
 ```sh
 #压测命令
@@ -143,7 +168,7 @@ CPU: AMD Ryzen 5 5600H with Radeon Graphics
 >
 > 而本项目仍然使用内存存储且只通过 CAS 支持简单的事务。
 
-# 测试截图
+## 测试截图
 
 laneEtcd
 
@@ -160,43 +185,9 @@ Etcd
 > laneEtcd 的性能变化不大，但是 Etcd 的性能相比在另一台高配一点的笔记本上的数据就有些奇怪，推测是主动限制了 cpu 占用率
 > 但是使用 htop 命令的时候，laneEtcd 和 Etcd 两者的 cpu 占用率差距很小，12 核均在 20~30%波动，因此暂时将此数据中 Etcd 的部分搁置，降低参考意义。
 
-# 运行服务端
 
-## 编译
 
+## 重新生成protobuf代码
 ```sh
-git clone https://github.com/Oncelane/laneEtcd.git
-cd laneEtcd
-make build
+make gen
 ```
-
-## 查看启动配置文件
-
-```yml
-# 根目录下的config中自带三个成员的配置文件 config.yml,表示每个实例的启动设置，标识为unique的条目不能在集群成员配置中重复
-addr: 127.0.0.1
-port: :51240 # unique 客户端与服务端通讯的grpc端口号
-rafts:
-  me: 0 # unique 有多少个
-  endpoints: # 服务端之间沟通使用的grpc端口号
-    - addr: 127.0.0.1
-      port: :32300
-    - addr: 127.0.0.1
-      port: :32301
-    - addr: 127.0.0.1
-      port: :32302
-databasepath: "data0" # unique
-maxraftstate: 100000 # snapshoot时机，当log数目达到此数目时进行快照，释放内存
-```
-
-## 运行服务端
-
-```sh
-make run
-```
-
-## 客户端使用请参考 src/cmd/client/client_test.go
-
-## 防呆 proto 指令
-
-protoc --go_out=.. --go-grpc_out=.. --go-grpc_opt=require_unimplemented_servers=false -I. -Iproto proto/pb/pb.proto
