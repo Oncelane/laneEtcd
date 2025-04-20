@@ -18,6 +18,7 @@ func main() {
 	runtime.GOMAXPROCS(1)
 	flag.Parse()
 	conf := laneConfig.Kvserver{}
+	laneLog.InitLogger("kvserver", true, false, false)
 	laneConfig.Init(*ConfigPath, &conf)
 	if len(conf.Rafts.Endpoints)%2 == 0 {
 		laneLog.Logger.Fatalln("the number of nodes is not odd")
@@ -25,9 +26,7 @@ func main() {
 	if len(conf.Rafts.Endpoints) < 3 {
 		laneLog.Logger.Fatalln("the number of nodes is less than 3")
 	}
-	// conf.Endpoints[conf.Me].Addr+conf.Endpoints[conf.Me].Addr
 
-	laneLog.InitLogger("kvserver", true, false, false)
 	_ = kvraft.StartKVServer(conf, conf.Rafts.Me, raft.MakePersister("/raftstate.dat", "/snapshot.dat", conf.DataBasePath), conf.Maxraftstate)
 	select {}
 }

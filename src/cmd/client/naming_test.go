@@ -25,6 +25,25 @@ func TestNamingMarshal(t *testing.T) {
 	laneLog.Logger.Infoln("unmashal:", nn)
 }
 
+func TestOnlyPutNaming(t *testing.T) {
+	ck.DeleteWithPrefix("")
+	n := client.Node{
+		Name:     "comet",
+		AppId:    "v1.0",
+		Port:     ":8020",
+		Location: "sz",
+		Env:      "produce",
+		MetaDate: map[string]string{"color": "red"},
+	}
+	for i := range 50 {
+		n.Name = "gprc:comet:" + strconv.Itoa(i)
+		n.IPs = []string{"localhost" + strconv.Itoa(i)}
+		n.Connect = int32(rand.Int() % 10000)
+		n.SetNode(ck, 0)
+	}
+	laneLog.Logger.Infoln("success set node TTL 800ms ")
+}
+
 func TestNaming(t *testing.T) {
 	n := client.Node{
 		Name:     "comet",

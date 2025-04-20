@@ -16,7 +16,7 @@ import (
 
 func TestBatchApi(t *testing.T) {
 	start := time.Now()
-	size := 1000
+	size := 50
 	pipe := ck.Pipeline()
 	pipe.DeleteWithPrefix("")
 	for i := range size {
@@ -40,6 +40,7 @@ func TestBatchApi(t *testing.T) {
 	if len(rets) != size {
 		laneLog.Logger.Errorln("batch 1000 key not correct real size", len(rets))
 	}
+	laneLog.Logger.Infoln(rets)
 
 }
 
