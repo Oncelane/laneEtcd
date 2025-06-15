@@ -2,6 +2,8 @@ package client_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +21,78 @@ func init() {
 	laneConfig.Init("config.yml", &conf)
 	// laneLog.Logger.Debugln("check conf", conf)
 	ck = client.MakeClerk(conf)
+	ck.DeleteWithPrefix("")
+}
+
+func getMultiClient(num int) []*client.Clerk {
+	conf := laneConfig.Clerk{}
+	laneConfig.Init("config.yml", &conf)
+	clients := make([]*client.Clerk, num)
+	for i := range num {
+		clients[i] = client.MakeClerk(conf)
+	}
+	return clients
+}
+
+func BenchmarkMultiClient_Get_Put_1(b *testing.B) {
+	ck.DeleteWithPrefix("")
+	testingNum := []int{1, 5, 25, 100, 1000}
+	for num := range testingNum {
+		fmt.Printf("%d clients, Get OP\n", num)
+		clients := getMultiClient(num)
+		for _, ck := range clients {
+			go func() {
+				for range b.N {
+					_, err := ck.Get("logic")
+					if err != nil && err != kvraft.ErrNil {
+						b.Error(err)
+					}
+				}
+			}()
+		}
+	}
+}
+func BenchmarkClient1(b *testing.B) {
+	benchmarkClient(b, 1)
+}
+
+func BenchmarkClient5(b *testing.B) {
+	benchmarkClient(b, 5)
+}
+
+func BenchmarkClient25(b *testing.B) {
+	benchmarkClient(b, 25)
+}
+
+func BenchmarkClient100(b *testing.B) {
+	benchmarkClient(b, 100)
+}
+
+func BenchmarkClient1000(b *testing.B) {
+	benchmarkClient(b, 1000)
+}
+
+func benchmarkClient(b *testing.B, clientNum int) {
+	fmt.Printf("%d clients, Get OP\n", clientNum)
+	b.StopTimer() // 暂停计时
+	clients := getMultiClient(clientNum)
+	b.ResetTimer() // 重置计时器
+	b.StartTimer()
+	var wg sync.WaitGroup
+	wg.Add(clientNum)
+
+	for _, ck := range clients {
+		go func(ck *client.Clerk) {
+			defer wg.Done()
+			for i := 0; i < b.N; i++ {
+				_, err := ck.Get("logic")
+				if err != nil && err != kvraft.ErrNil {
+					b.Error(err)
+				}
+			}
+		}(ck)
+	}
+	wg.Wait()
 }
 
 // 测试TTL功能
@@ -55,6 +129,7 @@ func TestTimeOut(t *testing.T) {
 	}
 }
 
+// 单客户端写负载压测数据
 func BenchmarkLaneEtcdPut(b *testing.B) {
 	key := "logic"
 	value := []byte("test")
@@ -78,6 +153,8 @@ func TestLaneEtcdPut(t *testing.T) {
 		}
 	}
 }
+
+// 单客户端读压测数据
 func BenchmarkLaneEtcdGet(b *testing.B) {
 	for range b.N {
 		_, err := ck.Get("logic")

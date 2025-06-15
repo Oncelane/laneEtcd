@@ -1,14 +1,5 @@
 package raft
 
-//
-// support for Raft and kvraft to save persistent
-// Raft state (log &c) and k/v server snapshots.
-//
-// we will use the original persister.go to test your code for grading.
-// so, while you can modify this code to help you debug, please
-// test with the original before submitting.
-//
-
 import (
 	"os"
 	"sync"
@@ -44,7 +35,7 @@ func (ps *Persister) ReadRaftState() []byte {
 	data, err := os.ReadFile(ps.basePath + ps.raftstatePath)
 
 	if err != nil {
-		laneLog.Logger.Errorln("read faild", err)
+		laneLog.Logger.Warnln("read faild", err)
 		return nil
 	}
 	return data
@@ -113,7 +104,7 @@ func (ps *Persister) ReadSnapshot() []byte {
 	defer ps.mu.Unlock()
 	data, err := os.ReadFile(ps.basePath + ps.snapshotPath)
 	if err != nil {
-		laneLog.Logger.Errorln("read faild", err)
+		laneLog.Logger.Warnln("read faild", err)
 		return nil
 	}
 	return data
@@ -124,7 +115,7 @@ func (ps *Persister) SnapshotSize() int {
 	defer ps.mu.Unlock()
 	info, err := os.Stat(ps.basePath + ps.snapshotPath)
 	if err != nil {
-		laneLog.Logger.Errorln("read faild", err)
+		laneLog.Logger.Warnln("read faild", err)
 		return 0
 	}
 	return int(info.Size())

@@ -29,10 +29,6 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	persister *raft.Persister
-	// Your definitions here.
-
-	//duplicateMap: use to handle mulity RPC request
-	// duplicateMap map[int64]duplicateType
 
 	lastAppliedIndex int //最近添加到状态机中的raft层的log的index
 	//lastInclude
@@ -169,7 +165,6 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 	// 	laneLog.Logger.Infof("server [%d] [PutAppend] 📨complete a args[%v] spand time:%v", kv.me, args.String(), time.Since(start))
 	// }()
 	reply = new(pb.PutAppendReply)
-	// Your code here.
 	reply.LeaderId = int32(kv.rf.GetleaderId())
 	reply.Err = ErrWrongLeader
 	reply.ServerId = int32(kv.me)
@@ -177,7 +172,8 @@ func (kv *KVServer) PutAppend(_ context.Context, args *pb.PutAppendArgs) (reply 
 	if _, ok := kv.rf.GetState(); ok {
 		// laneLog.Logger.Infof("server [%d] [info] i am leader", kv.me)
 	} else {
-		// laneLog.Logger.Infof("server [%d] [info] i am not leader ,leader is [%d]", kv.me, reply.LeaderId)
+		// laneLog.Logge
+		// r.Infof("server [%d] [info] i am not leader ,leader is [%d]", kv.me, reply.LeaderId)
 		return
 	}
 	// v := DateToValue(args.Value)
@@ -518,18 +514,9 @@ func (kv *KVServer) readPersist(data []byte) {
 
 }
 
-// the tester calls Kill() when a KVServer instance won't
-// be needed again. for your convenience, we supply
-// code to set rf.dead (without needing a lock),
-// and a killed() method to test rf.dead in
-// long-running loops. you can also add your own
-// code to Kill(). you're not required to do anything
-// about this, but it may be convenient (for example)
-// to suppress debug output from a Kill()ed instance.
 func (kv *KVServer) Kill() {
 	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
-	// Your code here, if desired.
 }
 
 func (kv *KVServer) killed() bool {
@@ -537,21 +524,7 @@ func (kv *KVServer) killed() bool {
 	return z == 1
 }
 
-// servers[] contains the ports of the set of
-// servers that will cooperate via Raft to
-// form the fault-tolerant key/value service.
-// me is the index of the current server in servers[].
-// the k/v server should store snapshots through the underlying Raft
-// implementation, which should call persister.SaveStateAndSnapshot() to
-// atomically save the Raft state along with the snapshot.
-// the k/v server should snapshot when Raft's saved state exceeds maxraftstate bytes,
-// in order to allow Raft to garbage-collect its log. if maxraftstate is -1,
-// you don't need to snapshot.
-// StartKVServer() must return quickly, so it should start goroutines
-// for any long-running work.
 func StartKVServer(conf laneConfig.Kvserver, me int, persister *raft.Persister, maxraftstate int) *KVServer {
-	// call labgob.Register on structures you want
-	// Go's RPC library to marshall/unmarshall.
 	var err error
 	gob.Register(raft.Op{})
 	gob.Register(map[string]string{})

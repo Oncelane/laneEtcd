@@ -1,25 +1,6 @@
 package raft
 
-// 适应kvraft版
-// this is an outline of the API that raft must expose to
-// the service (or tester). see comments below for
-// each of these functions for more details.
-//
-// rf = Make(...)
-//   create a new Raft server.
-// rf.Start(command interface{}) (index, term, isleader)
-//   start agreement on a new log entry
-// rf.GetState() (term, isLeader)
-//   ask a Raft for its current term, and whether it thinks it is leader
-// ApplyMsg
-//   each time a new entry is committed to the log, each Raft peer
-//   should send an ApplyMsg to the service (or tester)
-//   in the same server.
-//
-
 import (
-	//	"bytes"
-
 	"bytes"
 	"context"
 	"encoding/gob"
@@ -49,15 +30,6 @@ const LOGINITCAPCITY = 1000
 const APPENDENTRIES_TIMES = 0     //对于AE 重传只尝试5次
 const APPENDENTRIES_INTERVAL = 20 //对于任何重传AE，间隔20ms重传一次
 
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make(). set
-// CommandValid to true to indicate that the ApplyMsg contains a newly
-// committed log entry.
-//
-// in part 3D you'll want to send other kinds of messages (e.g.,
-// snapshots) on the applyCh, but set CommandValid to false for these
-// other uses.
 type ApplyMsg struct {
 	CommandValid bool
 	Command      []byte
@@ -75,17 +47,12 @@ type LogType struct {
 	Value interface{}
 }
 
-// A Go object implementing a single Raft peer.
 type Raft struct {
 	mu        sync.Mutex // Lock to protect shared access to this peer's state
 	peers     []*RaftEnd // RPC end points of all peers
 	persister *Persister // Object to hold this peer's persisted state
 	me        int        // this peer's index into peers[]
 	dead      int32      // set by Kill()
-
-	// Your data here (3A, 3B, 3C).
-	// Look at the paper's Figure 2 for a description of what
-	// state a Raft server must maintain.
 
 	//peer state
 	state int32
@@ -126,22 +93,6 @@ type Raft struct {
 	IisBackIndex int
 }
 
-// func (rf *Raft) GetDuplicateMap(key int64) (value duplicateType, ok bool) {
-// 	value, ok = rf.duplicateMap[key]
-// 	return
-// }
-
-// func (rf *Raft) SetDuplicateMap(key int64, index int, reply string) {
-// 	rf.duplicateMap[key] = duplicateType{
-// 		Index: index,
-// 		Reply: reply,
-// 	}
-// }
-
-// func (rf *Raft) DelDuplicateMap(key int64) {
-// 	delete(rf.duplicateMap, key)
-// }
-
 func (rf *Raft) GetCommitIndex() int {
 	return rf.commitIndex + 1
 }
@@ -175,7 +126,6 @@ func (rf *Raft) index2LogPos(index int) (pos int) {
 }
 
 type RequestVoteArgs struct {
-	// Your data here (3A, 3B).
 	Term         int
 	CandidateId  int
 	LastLogIndex int
@@ -183,7 +133,6 @@ type RequestVoteArgs struct {
 }
 
 type RequestVoteReply struct {
-	// Your data here (3A).
 	Term        int
 	VoteGranted bool
 }
@@ -216,12 +165,9 @@ type SnapshotInstallreplys struct {
 	Term int
 }
 
-// return currentTerm and whether this server
-// believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	// Your code here (3A).
 	return rf.currentTerm, rf.state == leader
 }
 
@@ -233,23 +179,14 @@ func (rf *Raft) GetTerm() int {
 	return rf.currentTerm
 }
 
-// save Raft's persistent state to stable storage,
-// where it can later be retrieved after a crash and restart.
-// see paper's Figure 2 for a description of what should be persistent.
-// before you've implemented snapshots, you should pass nil as the
-// second argument to persister.Save().
-// after you've implemented snapshots, pass the current snapshot
-// (or nil if there's not yet a snapshot).
+// 快照辅助函数
 func (rf *Raft) persist() {
-	// Your code here (3C).
-	// Example:
 	data := rf.persistWithSnapshot()
 	rf.persister.Save(data, rf.SnapshotDate)
 	// laneLog.Logger.Infof("📦Per Term[%d] [%d] len of persist.Snapshot[%d],len of raft.snapshot[%d]", rf.currentTerm, rf.me, len(rf.persister.snapshot), len(rf.SnapshotDate))
 }
 
 func (rf *Raft) persistWithSnapshot() []byte {
-	//TODO
 	w := new(bytes.Buffer)
 	e := gob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
@@ -262,14 +199,13 @@ func (rf *Raft) persistWithSnapshot() []byte {
 	return raftstate
 }
 
+// 读取快照
 func (rf *Raft) readPersist(data []byte) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (3C).
-	// Example:
 	r := bytes.NewBuffer(data)
 	d := gob.NewDecoder(r)
 
@@ -293,36 +229,7 @@ func (rf *Raft) readPersist(data []byte) {
 
 }
 
-// example RequestVote RPC handler.
-
-// example code to send a RequestVote RPC to a server.
-// server is the index of the target server in rf.peers[].
-// expects RPC arguments in args.
-// fills in *reply with RPC reply, so caller should
-// pass &reply.
-// the types of the args and reply passed to Call() must be
-// the same as the types of the arguments declared in the
-// handler function (including whether they are pointers).
-//
-// The labrpc package simulates a lossy network, in which servers
-// may be unreachable, and in which requests and replies may be lost.
-// Call() sends a request and waits for a reply. If a reply arrives
-// within a timeout interval, Call() returns true; otherwise
-// Call() returns false. Thus Call() may not return for a while.
-// A false return can be caused by a dead server, a live server that
-// can't be reached, a lost request, or a lost reply.
-//
-// Call() is guaranteed to return (perhaps after a delay) *except* if the
-// handler function on the server side does not return.  Thus there
-// is no need to implement your own timeouts around Call().
-//
-// look at the comments in ../labrpc/labrpc.go for more details.
-//
-// if you're having trouble getting RPC to work, check that you've
-// capitalized all field names in structs passed over RPC, and
-// that the caller passes the address of the reply struct with &, not
-// the struct itself.
-
+// 执行日志复制
 func (rf *Raft) CopyEntries(args *pb.AppendEntriesArgs) {
 	// logchange := false
 	for i := 0; i < len(args.Entries); i++ {
@@ -374,6 +281,8 @@ func (rf *Raft) CopyEntries(args *pb.AppendEntriesArgs) {
 	}
 
 }
+
+// 投票RPC
 func (rf *Raft) RequestVote(_ context.Context, args *pb.RequestVoteArgs) (reply *pb.RequestVoteReply, err error) {
 	reply = new(pb.RequestVoteReply)
 	// laneLog.Logger.Panicln("check for args", args)
@@ -410,6 +319,8 @@ func (rf *Raft) RequestVote(_ context.Context, args *pb.RequestVoteArgs) (reply 
 	rf.persist()
 	return
 }
+
+// 日志复制RPC
 func (rf *Raft) AppendEntries(_ context.Context, args *pb.AppendEntriesArgs) (reply *pb.AppendEntriesReply, err error) {
 	reply = new(pb.AppendEntriesReply)
 	//需要补充判断条件
@@ -420,6 +331,7 @@ func (rf *Raft) AppendEntries(_ context.Context, args *pb.AppendEntriesArgs) (re
 	reply.ConflictIndex = -1
 	reply.ConflictTerm = -1
 
+	// 检查Term
 	if rf.currentTerm > int(args.Term) {
 		laneLog.Logger.Infof("💔Rec Term[%d] [%d] Reject Leader[%d]Term[%d][too OLE]", rf.currentTerm, rf.me, args.LeaderId, int(args.Term))
 		return
@@ -431,6 +343,7 @@ func (rf *Raft) AppendEntries(_ context.Context, args *pb.AppendEntriesArgs) (re
 		rf.votedFor = -1
 		rf.persist()
 	}
+	// 节点状态切换
 	if rf.currentTerm == int(args.Term) && atomic.LoadInt32(&rf.state) == candidate {
 		rf.state = follower
 		rf.votedFor = -1
@@ -439,7 +352,8 @@ func (rf *Raft) AppendEntries(_ context.Context, args *pb.AppendEntriesArgs) (re
 	rf.lastHearBeatTime = time.Now()
 	rf.leaderId = int(args.LeaderId)
 	// laneLog.Logger.Infof("💖Rec Term[%d] [%d] Receive: LeaderId[%d]Term[%d] PreLogIndex[%d] PrevLogTerm[%d] LeaderCommit[%d] Entries[%v] len[%d]", rf.currentTerm, rf.me, args.LeaderId, args.Term, args.PrevLogIndex, args.PrevLogTerm, args.LeaderCommit, args.Entries, len(args.Entries))
-	//新判断
+
+	// 检查日志
 	if args.PrevLogIndex < int64(rf.lastIncludeIndex) { // index在快照范围内，那么
 		reply.ConflictIndex = 0
 		laneLog.Logger.Infof("💔Rec Term[%d] [%d] Reject for args.PrevLogIndex[%d] < rf.lastIncludeIndex[%d]", rf.currentTerm, rf.me, args.PrevLogIndex, rf.lastIncludeIndex)
@@ -465,7 +379,7 @@ func (rf *Raft) AppendEntries(_ context.Context, args *pb.AppendEntriesArgs) (re
 					break
 				}
 			}
-			laneLog.Logger.Infof("💔Rev Term[%d] [%d] Reject :PreLogTerm Not Match [%d] != [%d]", rf.currentTerm, rf.me, rf.log[rf.index2LogPos(int(args.PrevLogIndex))].Term, args.PrevLogTerm)
+			laneLog.Logger.Infof("💔Rev Term[%d] [%d] Reject:PreLogTerm Not Match [%d] != [%d]", rf.currentTerm, rf.me, rf.log[rf.index2LogPos(int(args.PrevLogIndex))].Term, args.PrevLogTerm)
 			return
 		}
 	}
@@ -476,6 +390,7 @@ func (rf *Raft) AppendEntries(_ context.Context, args *pb.AppendEntriesArgs) (re
 	return
 }
 
+// Follower快照安装
 func (rf *Raft) SnapshotInstall(_ context.Context, args *pb.SnapshotInstallArgs) (reply *pb.SnapshotInstallReply, err error) {
 	reply = new(pb.SnapshotInstallReply)
 	rf.mu.Lock()
@@ -521,13 +436,13 @@ func (rf *Raft) SnapshotInstall(_ context.Context, args *pb.SnapshotInstallArgs)
 	rf.lastIncludeIndex = int(args.LastIncludeIndex)
 	rf.lastIncludeTerm = int(args.LastIncludeTerm)
 
-	i := len(rf.log) - 10
-	if i < 0 {
-		i = 0
-	}
-	for ; i < len(rf.log); i++ {
-		laneLog.Logger.Infof("Term[%d] [%d] index[%d] value[term:%v data:%v]", rf.currentTerm, rf.me, i+rf.lastIncludeIndex+1, rf.log[i].Term, rf.log[i].Value)
-	}
+	// i := len(rf.log) - 10
+	// if i < 0 {
+	// 	i = 0
+	// }
+	// for ; i < len(rf.log); i++ {
+	// 	laneLog.Logger.Infof("Term[%d] [%d] index[%d] value[term:%v data:%v]", rf.currentTerm, rf.me, i+rf.lastIncludeIndex+1, rf.log[i].Term, rf.log[i].Value)
+	// }
 	spanshootLength := rf.persister.SnapshotSize()
 	laneLog.Logger.Infof("📷Cmi Term[%d] [%d] 📦Save snapshot to application[%d] (Receive from leader)", rf.currentTerm, rf.me, spanshootLength)
 	//snapshot提交给应用层
@@ -578,17 +493,10 @@ func (rf *Raft) sendInstallSnapshot(server int, args *pb.SnapshotInstallArgs) (r
 	return reply, err == nil
 }
 
-// the service says it has created a snapshot that has
-// all info up to and including index. this means the
-// service no longer needs the log through (and including)
-// that index. Raft should now trim its log as much as possible.
+// 应用层保存快照，告诉协议层压缩日志
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (3D).
-	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] 📷Snapshot ask to snap Index[%d] Raft log Len:[%d]", rf.currentTerm, rf.me, index-1, len(rf.log))
-	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] Wait for the lock🤨", rf.currentTerm, rf.me)
+
 	rf.mu.Lock()
-	// laneLog.Logger.Infof("SNAPS Term[%d] [%d] Get the lock🔐", rf.currentTerm, rf.me)
-	// defer laneLog.Logger.Infof("SNAPS Term[%d] [%d] Unlock the lock🔓", rf.currentTerm, rf.me)
 	defer rf.mu.Unlock()
 
 	index -= 1
@@ -673,27 +581,13 @@ func (rf *Raft) undateLastApplied() {
 
 }
 
-// the service using Raft (e.g. a k/v server) wants to start
-// agreement on the next command to be appended to Raft's log. if this
-// server isn't the leader, returns false. otherwise start the
-// agreement and return immediately. there is no guarantee that this
-// command will ever be committed to the Raft log, since the leader
-// may fail or lose an election. even if the Raft instance has been killed,
-// this function should return gracefully.
-//
-// the first return value is the index that the command will appear at
-// if it's ever committed. the second return value is the current
-// term. the third return value is true if this server believes it is
-// the leader.
-
+// 协议层入口函数
 func (rf *Raft) Start(command []byte) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	index := rf.lastIndex() + 2
 	term := rf.currentTerm
 	isLeader := rf.state == leader
-
-	// Your code here (3B).
 	if !isLeader {
 		return index, term, isLeader
 	}
@@ -709,18 +603,8 @@ func (rf *Raft) Start(command []byte) (int, int, bool) {
 	return index, term, isLeader
 }
 
-// the tester doesn't halt goroutines created by Raft after each test,
-// but it does call the Kill() method. your code can use killed() to
-// check whether Kill() has been called. the use of atomic avoids the
-// need for a lock.
-//
-// the issue is that long-running goroutines use memory and may chew
-// up CPU time, perhaps causing later tests to fail and generating
-// confusing debug output. any goroutine with a long-running loop
-// should call killed() to check whether it should stop.
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
-	// Your code here, if desired.
 }
 
 func (rf *Raft) killed() bool {
@@ -733,6 +617,7 @@ func (rf *Raft) sendRequestVote2(server int, args *pb.RequestVoteArgs) (reply *p
 	return reply, err == nil
 }
 
+// 选举主要函数
 func (rf *Raft) electionLoop() {
 	for !rf.killed() {
 		time.Sleep(time.Microsecond * 50)
@@ -772,6 +657,7 @@ func (rf *Raft) electionLoop() {
 				voteCount := 1
 				finishCount := 1
 				VoteResultChan := make(chan *VoteResult, len(rf.peers))
+				// 并行发送投票请求
 				for peerId := 0; peerId < len(rf.peers) && !rf.killed(); peerId++ {
 					go func(server int) {
 						if server == rf.me {
@@ -780,20 +666,21 @@ func (rf *Raft) electionLoop() {
 						if resp, ok := rf.sendRequestVote2(server, &args); ok {
 
 							if resp.VoteGranted {
-								laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate 🥰receive a voteRPC reply from [%d] ,voteGranted Yes", rf.currentTerm, rf.me, server)
+								laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate receive a voteRPC reply from [%d] ,voteGranted Yes", rf.currentTerm, rf.me, server)
 							} else {
-								laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate 🥰receive a voteRPC reply from [%d] ,voteGranted No", rf.currentTerm, rf.me, server)
+								laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate receive a voteRPC reply from [%d] ,voteGranted No", rf.currentTerm, rf.me, server)
 							}
 							VoteResultChan <- &VoteResult{raftId: server, resp: resp}
 
 						} else {
-							// laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate 🥲Do not get voteRPC reply from [%d] ,voteGranted Nil", rf.currentTerm, rf.me, server)
+							// laneLog.Logger.Infof("🎫Get Term[%d] [%d]Candidate Do not get voteRPC reply from [%d] ,voteGranted Nil", rf.currentTerm, rf.me, server)
 							VoteResultChan <- &VoteResult{raftId: server, resp: nil}
 						}
 
 					}(peerId)
 				}
 				maxTerm := 0
+				// 收集投票结果
 				for !rf.killed() {
 					select {
 					case VoteResult := <-VoteResultChan:
@@ -830,7 +717,7 @@ func (rf *Raft) electionLoop() {
 					rf.persist()
 					return
 				}
-
+				// 获取选票超过半数，晋升为leader
 				if voteCount > len(rf.peers)/2 {
 					rf.IisBack = false
 					rf.state = leader
@@ -844,11 +731,8 @@ func (rf *Raft) electionLoop() {
 						rf.matchIndex[i] = -1
 					}
 					rf.updateCommitIndex()
-					laneLog.Logger.Infof("❗ Term[%d] [%d]candidate -> leader", rf.currentTerm, rf.me)
+					laneLog.Logger.Infof("❗Term[%d] [%d] candidate -> leader", rf.currentTerm, rf.me)
 					rf.lastSendHeartbeatTime = time.Now().Add(-time.Millisecond * 2 * HeartBeatInterval)
-					// data, _ := json.Marshal(Op{
-					// 	OpType: int32(pb.OpType_EmptyT),
-					// })
 					b := new(bytes.Buffer)
 					e := gob.NewEncoder(b)
 					e.Encode(Op{
@@ -875,6 +759,7 @@ const (
 	AEresult_Lost               //直到超时，对方没收到心跳包/己方没收到响应
 )
 
+// 日志复制
 func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 	rf.mu.Lock()
 	if rf.state != leader {
@@ -916,7 +801,7 @@ func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 	rf.mu.Unlock()
 
 	reply, err := rf.peers[server].conn.AppendEntries(context.Background(), args)
-
+	// Leader处理发送日志结果
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if err == nil {
@@ -975,6 +860,7 @@ func (rf *Raft) SendAppendEntriesToPeerId(server int, applychreply *chan int) {
 	}
 }
 
+// 触发日志复制
 func (rf *Raft) appendEntriesLoop() {
 	for !rf.killed() {
 		time.Sleep(time.Millisecond * 50)
@@ -995,6 +881,7 @@ func (rf *Raft) appendEntriesLoop() {
 	}
 }
 
+// 处理日志发送
 func (rf *Raft) SendAppendEntriesToAll() {
 	for i := range rf.peers {
 		if i == rf.me {
@@ -1163,21 +1050,16 @@ func Make(me int,
 	//ApplyCh
 	rf.applyCh = applyCh
 	rf.SnapshotDate = nil
-	//
 	rf.applyChTerm = make(chan ApplyMsg, 1000)
-
-	//
 
 	rf.IisBack = false
 	rf.IisBackIndex = -1
-	// Your initialization code here (3A, 3B, 3C).
-	laneLog.Logger.Infof("RESTA Term[%d] [%d] Restart😎", rf.currentTerm, rf.me)
+	laneLog.Logger.Infof("RESTA Term[%d] [%d] start", rf.currentTerm, rf.me)
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	// 向application层安装快照
 	rf.installSnapshotToApplication()
 	// start ticker goroutine to start elections
-	// go rf.mainLoop2()
 
 	rf.StartRaft(conf.Endpoints[me])
 	servers := WaitConnect(conf)
@@ -1186,8 +1068,6 @@ func Make(me int,
 	go rf.Applyer()
 	go rf.electionLoop()
 	go rf.appendEntriesLoop()
-	// go rf.undateLastApplied()
-	// go rf.updateCommitIndex()
 
 	return rf
 }
@@ -1230,6 +1110,6 @@ func WaitConnect(conf laneConfig.RaftEnds) []*RaftEnd {
 		}(i, conf.Endpoints[i])
 	}
 	wait.Wait()
-	laneLog.Logger.Infof("🦖 All %d Connetct", len(conf.Endpoints))
+	laneLog.Logger.Infof("All %d Connetct", len(conf.Endpoints))
 	return servers
 }

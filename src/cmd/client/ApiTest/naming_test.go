@@ -11,6 +11,7 @@ import (
 	"github.com/Oncelane/laneEtcd/src/pkg/laneLog"
 )
 
+// naming结构体json序列化
 func TestNamingMarshal(t *testing.T) {
 	n := client.Node{
 		Name:     "comet",
@@ -26,6 +27,7 @@ func TestNamingMarshal(t *testing.T) {
 	laneLog.Logger.Infoln("unmashal:", nn)
 }
 
+// 将序列化后的naming结构体写入服务注册中心
 func TestOnlyPutNaming(t *testing.T) {
 	ck.DeleteWithPrefix("")
 	n := client.Node{
@@ -45,6 +47,7 @@ func TestOnlyPutNaming(t *testing.T) {
 	laneLog.Logger.Infoln("success set node TTL 800ms ")
 }
 
+// 带TTL写入，再读取
 func TestNaming(t *testing.T) {
 	n := client.Node{
 		Name:     "comet",
@@ -54,6 +57,7 @@ func TestNaming(t *testing.T) {
 		Env:      "produce",
 		MetaDate: map[string]string{"color": "red"},
 	}
+	fmt.Println("---start to test set---")
 	for i := range 4 {
 		n.Name = "comet" + strconv.Itoa(i)
 		n.IPs = []string{"localhost" + strconv.Itoa(i)}
@@ -61,20 +65,21 @@ func TestNaming(t *testing.T) {
 		timeout := time.Millisecond * 800
 		n.SetNode(ck, timeout)
 	}
-	laneLog.Logger.Infoln("success set node TTL 800ms ")
+	laneLog.Logger.Infoln("---success set node TTL 800ms---")
 
 	// check node
 	nodes, err := client.GetNode(ck, "comet")
 	if err != nil {
 		laneLog.Logger.Fatalln(err)
 	}
+	laneLog.Logger.Infoln("---start to test get---")
 	for _, n := range nodes {
 		laneLog.Logger.Infof("get nodes:%+v", n)
 	}
 
 	// after 1 sercond
 	time.Sleep(time.Second)
-	laneLog.Logger.Infoln("sleep 1000ms")
+	laneLog.Logger.Infoln("---test sleep 1000ms---")
 
 	// check node
 	nodes, err = client.GetNode(ck, "comet")
@@ -82,7 +87,9 @@ func TestNaming(t *testing.T) {
 		laneLog.Logger.Fatalln(err)
 	}
 	if len(nodes) == 0 {
-		laneLog.Logger.Infoln("no node")
+		laneLog.Logger.Infoln("---get no node as expect---")
+	} else {
+		laneLog.Logger.Infoln("---error---")
 	}
 	for _, n := range nodes {
 		laneLog.Logger.Infof("get nodes:%+v", n)

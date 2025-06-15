@@ -20,8 +20,7 @@ import (
 var pipeLimit int = 1024 * 4000
 
 type Clerk struct {
-	servers []*kvraft.KVClient
-	// You will have to modify this struct.
+	servers         []*kvraft.KVClient
 	nextSendLocalId int
 	LatestOffset    int32
 	clientId        int64
@@ -29,6 +28,7 @@ type Clerk struct {
 	sToc            []int
 	conf            laneConfig.Clerk
 	mu              sync.Mutex
+	kill            bool
 }
 
 func nrand() int64 {
@@ -38,9 +38,13 @@ func nrand() int64 {
 	return x
 }
 
+func (c *Clerk) Kill() {
+	c.kill = true
+}
+
 func (c *Clerk) watchEtcd() {
 
-	for {
+	for !c.kill {
 		for i, kvclient := range c.servers {
 			if !kvclient.Valid {
 				if kvclient.Realconn != nil {
@@ -60,7 +64,6 @@ func (c *Clerk) watchEtcd() {
 func MakeClerk(conf laneConfig.Clerk) *Clerk {
 	ck := new(Clerk)
 	ck.conf = conf
-	// You'll have to add code here
 	ck.servers = make([]*kvraft.KVClient, len(conf.EtcdAddrs))
 	for i := range ck.servers {
 		ck.servers[i] = new(kvraft.KVClient)
@@ -112,19 +115,7 @@ func (ck *Clerk) doGetKV(key string, withPrefix bool, op pb.OpType, pageSize, pa
 	return rets, nil
 }
 
-// fetch the current value for a key.
-// returns "" if the key does not exist.
-// keeps trying forever in the face of all other errors.
-//
-// you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
-//
-// the types of args and reply (including whether they are pointers)
-// must match the declared types of the RPC handler function's
-// arguments. and reply must be passed as a pointer.
-
 func (ck *Clerk) read(args *pb.GetArgs) ([][]byte, error) {
-	// You will have to modify this function.
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
 	totalCount := 0
@@ -209,16 +200,7 @@ func (ck *Clerk) read(args *pb.GetArgs) ([][]byte, error) {
 	}
 }
 
-// shared by Put and Append.
-//
-// you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer."+op, &args, &reply)
-//
-// the types of args and reply (including whether they are pointers)
-// must match the declared types of the RPC handler function's
-// arguments. and reply must be passed as a pointer.
 func (ck *Clerk) write(key string, value, oriValue []byte, TTL time.Duration, op int32) error {
-	// You will have to modify this function.
 
 	ck.mu.Lock()
 	defer ck.mu.Unlock()

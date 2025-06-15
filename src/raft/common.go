@@ -16,7 +16,6 @@ type Op struct {
 	Key      string
 	OriValue []byte
 	Entry    common.Entry
-	// DeadTIme int64
 }
 
 func (o *Op) Size() int {
